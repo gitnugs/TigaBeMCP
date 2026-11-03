@@ -1,0 +1,62 @@
+{
+  "name": "tigabe-ai",
+  "version": "1.0.0",
+  "description": "TigaBe AI - School Information Assistant for SD TigaBe parents",
+  "author": {
+    "name": "WorkBuddy",
+    "email": ""
+  },
+  "agents": [
+    "./agents/tigabe-ai.md"
+  ],
+  "expertType": "agent",
+  "agentName": "tigabe-ai",
+  "displayName": {
+    "en": "TigaBe AI",
+    "zh": "TigaBe AI"
+  },
+  "profession": {
+    "en": "School Information Assistant",
+    "zh": "学校信息助手"
+  },
+  "displayDescription": {
+    "en": "Information assistant for SD TigaBe parents, answering questions about school rules, schedules, uniforms, pickup, and child protection based on official documents.",
+    "zh": "TigaBe小学家长信息助手，基于官方文件回答校规、日程、校服、接送及儿童保护问题。"
+  },
+  "avatar": "avatars/expert.png",
+  "categoryId": "12-IndustryConsultant",
+  "defaultInitPrompt": {
+    "zh": "Jadwal pelajaran hari ini apa saja?",
+    "en": "What is today's class schedule?"
+  },
+  "plugin": "tigabe-ai",
+  "tags": [
+    {
+      "en": "School Rules",
+      "zh": "校规查询"
+    },
+    {
+      "en": "Schedule",
+      "zh": "日程查询"
+    },
+    {
+      "en": "Child Protection",
+      "zh": "儿童保护"
+    }
+  ],
+  "quickPrompts": [
+    {
+      "en": "What is today's class schedule?",
+      "zh": "Jadwal pelajaran hari ini apa saja?"
+    },
+    {
+      "en": "What is the school uniform regulation?",
+      "zh": "校服规定是什么？"
+    },
+    {
+      "en": "What are the child protection procedures?",
+      "zh": "儿童保护流程是什么？"
+    }
+  ],
+  "sharedBy": "configurenugroho@gmail.com"
+}

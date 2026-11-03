@@ -233,6 +233,9 @@ pasang_login(mcp, oauth_provider)
 from admin_page import pasang_admin   # noqa: E402
 pasang_admin(mcp)
 
+from pengetahuan_ui import pasang_pengetahuan   # noqa: E402
+pasang_pengetahuan(mcp)
+
 
 def jalankan() -> None:
     """Bangun app HTTP (dengan SessionMiddleware) dan jalankan uvicorn."""

@@ -31,3 +31,30 @@ def ambil_objek(object_key: str) -> bytes:
     finally:
         resp.close()
         resp.release_conn()
+
+
+def unggah_objek(object_key: str, data: bytes, content_type: str = "application/pdf") -> None:
+    import io
+    _client.put_object(
+        os.environ["MINIO_BUCKET"],
+        object_key,
+        io.BytesIO(data),
+        length=len(data),
+        content_type=content_type,
+    )
+
+
+def ada_objek(object_key: str) -> bool:
+    try:
+        _client.stat_object(os.environ["MINIO_BUCKET"], object_key)
+        return True
+    except Exception:
+        return False
+
+
+def hapus_objek(object_key: str) -> bool:
+    try:
+        _client.remove_object(os.environ["MINIO_BUCKET"], object_key)
+        return True
+    except Exception:
+        return not ada_objek(object_key)

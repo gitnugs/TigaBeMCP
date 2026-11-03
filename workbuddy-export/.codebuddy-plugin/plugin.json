@@ -1,0 +1,15 @@
+{
+  "name": "tigabe-mcp",
+  "version": "1.0.0",
+  "description": "MCP app untuk dokumen resmi SD TigaBe (cari aturan/jadwal/seragam/penjemputan), deteksi peran, login browser, dan audit chat.",
+  "description_zh": "SD TigaBe 官方文档 MCP 应用（搜索规章/时间表/校服/接送）、角色识别、浏览器登录与聊天审计。",
+  "description_en": "MCP app for SD TigaBe official documents (search rules/schedules/uniforms/pickup), role detection, browser login, and chat audit.",
+  "author": {
+    "name": "TigaBe"
+  },
+  "category": "mcp-app",
+  "keywords": ["tigabe", "sekolah", "mcp", "dokumen", "aitalent"],
+  "workbuddy": {
+    "runtimeOwner": "agent-cli"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "tigabe": {
+      "type": "http",
+      "url": "http://127.0.0.1:18105/mcp",
+      "description": "Referensi dokumen resmi SD TigaBe (peran dari login browser/chat)",
+      "defer_loading": false
+    }
+  }
+}

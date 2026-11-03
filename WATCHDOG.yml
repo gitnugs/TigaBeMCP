@@ -1,0 +1,5 @@
+advisors:
+  - name: default
+  - name: Advisor 2
+    model: Tiprouter/deepseek-v4-flash-0731:max
+    instructions: "-Awasi setiap perubahan"

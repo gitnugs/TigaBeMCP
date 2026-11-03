@@ -1,0 +1,1 @@
+{"users": [{"username": "guru1", "peran": "guru", "label": "Bu Sari", "password_hash": "GANTI: python scripts/buat_user.py --username guru1 --peran guru --password '...'"}]}

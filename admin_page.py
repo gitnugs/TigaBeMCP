@@ -135,6 +135,7 @@ label.f{{display:block;font-size:.78rem;color:#3f4650;margin:8px 0 3px}}
 <p>
   <a class="tab {'aktif' if tab=='user' else ''}" href="/admin">👤 Pengguna &amp; Peran</a>
   <a class="tab {'aktif' if tab=='audit' else ''}" href="/admin/audit">📜 Audit Chat</a>
+  <a class="tab" href="/pengetahuan">📚 Pengetahuan</a>
 </p>
 <p class="small">Halaman ini hanya bisa dibuka dari komputer ini (localhost).</p>
 {pesan_html}{galat_html}
@@ -232,6 +233,7 @@ th{{background:#eef2f6}}
 <p>
   <a class="tab" href="/admin">👤 Pengguna &amp; Peran</a>
   <a class="tab aktif" href="/admin/audit">📜 Audit Chat</a>
+  <a class="tab" href="/pengetahuan">📚 Pengetahuan</a>
 </p>
 {pesan_html}
 <p class="small">200 aktivitas terakhir: setiap panggilan tool dari chat/workbuddy

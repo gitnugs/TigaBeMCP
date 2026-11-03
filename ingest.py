@@ -121,20 +121,43 @@ def buat_chunk(body, doc_id):
     return units
 
 
-def siapkan(key):
-    data = ambil_objek(key)
+def proses_pdf(data: bytes, overrides: dict | None = None):
+    """Parse PDF jadi (meta, chunks) tanpa menyentuh MinIO/Qdrant.
+
+    `chunks` = list[(n, embed_text, payload)]; `n` indeks urut chunk.
+    `overrides` menimpa/mengisi nilai meta SEBELUM chunk dibangun, sehingga
+    payload & embed_text konsisten (dipakai knowledge.unggah_pdf)."""
     lines = baca_pdf(data)
-    meta, body = parse_header(lines)
-    if key != meta["document_id"] + ".pdf":
-        print(f"  PERINGATAN: object_key {key} tidak sama dengan ID sumber {meta['document_id']}")
+    try:
+        meta, body = parse_header(lines)
+    except (StopIteration, IndexError):
+        # PDF tanpa blok header terstruktur: seluruh teks menjadi isi dokumen
+        body = lines
+        meta = {k: None for k, _ in LABELS}
+        meta["document_id"] = ""
+        meta["title"] = None
+    if overrides:
+        meta.update(overrides)
+    doc_id = meta.get("document_id") or ""
+    if not meta.get("title"):
+        meta["title"] = doc_id
+    object_key = doc_id + ".pdf"
     chunks = []
-    for n, u in enumerate(buat_chunk(body, meta["document_id"])):
+    for n, u in enumerate(buat_chunk(body, doc_id)):
         teks = "\n".join(u["lines"])
         pasal = f"Pasal {u['pasal']}" if u["pasal"] else "Pengantar"
-        embed_text = f"{meta['title']} [{meta['document_id']}] - {u['section']} - {pasal}\n{teks}"
-        payload = dict(meta, object_key=key, page=u["page"], page_end=u["page_end"],
+        embed_text = f"{meta['title']} [{doc_id}] - {u['section']} - {pasal}\n{teks}"
+        payload = dict(meta, object_key=object_key, page=u["page"], page_end=u["page_end"],
                        pasal=u["pasal"], section=u["section"], text=teks)
         chunks.append((n, embed_text, payload))
+    return meta, chunks
+
+
+def siapkan(key):
+    data = ambil_objek(key)
+    meta, chunks = proses_pdf(data)
+    if key != meta["document_id"] + ".pdf":
+        print(f"  PERINGATAN: object_key {key} tidak sama dengan ID sumber {meta['document_id']}")
     return meta, chunks
 
 
@@ -147,6 +170,46 @@ def buat_klien():
     port = u.port or (443 if u.scheme == "https" else 6333)
     return QdrantClient(url=f"{u.scheme}://{u.hostname}", port=port,
                         api_key=os.environ["QDRANT_API_KEY"], timeout=60)
+
+
+def dorong_ke_qdrant(meta, chunks) -> int:
+    """Vektorisasi + simpan `chunks` satu dokumen ke Qdrant (idempoten).
+
+    TIDAK memfilter tingkat_akses; seluruh chunk dikirim. Kembalikan jumlah titik
+    yang berhasil di-upsert (0 jika tidak ada chunk)."""
+    doc_id = meta["document_id"]
+    if not chunks:
+        return 0
+
+    from qdrant_client import models
+    from embedding import embed_passages, DIM
+
+    client = buat_klien()
+    if not client.collection_exists(COLLECTION):
+        client.create_collection(
+            COLLECTION,
+            vectors_config=models.VectorParams(size=DIM, distance=models.Distance.COSINE),
+        )
+    for f in ("document_id", "tingkat_akses", "status", "jenis"):
+        client.create_payload_index(COLLECTION, f, models.PayloadSchemaType.KEYWORD)
+
+    # idempoten: hapus chunk lama dokumen ini lebih dulu
+    client.delete(
+        COLLECTION,
+        points_selector=models.FilterSelector(filter=models.Filter(must=[
+            models.FieldCondition(key="document_id", match=models.MatchValue(value=doc_id))
+        ])),
+    )
+    vecs = embed_passages([c[1] for c in chunks])
+    points = [
+        models.PointStruct(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc_id}|{n}")),
+            vector=v, payload=p,
+        )
+        for (n, _, p), v in zip(chunks, vecs)
+    ]
+    client.upsert(COLLECTION, points=points)
+    return len(points)
 
 
 def main():
@@ -170,38 +233,14 @@ def main():
         print("\n(dry run: tidak ada yang dikirim ke Qdrant)")
         return
 
-    from qdrant_client import models
-    from embedding import embed_passages, DIM
+    total = 0
+    for meta, chunks in hasil:
+        n = dorong_ke_qdrant(meta, chunks)
+        doc_id = meta["document_id"]
+        print(f"{doc_id}: {n} chunk tersimpan")
+        total += n
 
     client = buat_klien()
-    if not client.collection_exists(COLLECTION):
-        client.create_collection(
-            COLLECTION,
-            vectors_config=models.VectorParams(size=DIM, distance=models.Distance.COSINE),
-        )
-    for f in ("document_id", "tingkat_akses", "status", "jenis"):
-        client.create_payload_index(COLLECTION, f, models.PayloadSchemaType.KEYWORD)
-
-    for meta, chunks in hasil:
-        doc_id = meta["document_id"]
-        # idempoten: hapus chunk lama dokumen ini lebih dulu
-        client.delete(
-            COLLECTION,
-            points_selector=models.FilterSelector(filter=models.Filter(must=[
-                models.FieldCondition(key="document_id", match=models.MatchValue(value=doc_id))
-            ])),
-        )
-        vecs = embed_passages([c[1] for c in chunks])
-        points = [
-            models.PointStruct(
-                id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc_id}|{n}")),
-                vector=v, payload=p,
-            )
-            for (n, _, p), v in zip(chunks, vecs)
-        ]
-        client.upsert(COLLECTION, points=points)
-        print(f"{doc_id}: {len(points)} chunk tersimpan")
-
     print("Total titik di collection:", client.count(COLLECTION).count)
 
 

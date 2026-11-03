@@ -35,6 +35,17 @@
 | `error_embed` / `error_qdrant` | backend terganggu | sampaikan tidak bisa mencari sekarang |
 | `keluar` | logout | peran kembali publik |
 
+## Kelola pengetahuan (admin)
+
+Admin mengelola dokumen (SOP, aturan, jadwal) lewat halaman web:
+
+1. Buka browser ke `http://127.0.0.1:18105/pengetahuan`.
+2. **Unggah PDF** SOP → pilih **tingkat_akses** (siswa/guru/kepala_sekolah/publik/orang_tua).
+3. Lihat status pipeline: PDF masuk ke **MinIO** lalu terindeks ke **Qdrant**.
+4. **Hapus** dokumen bila tidak lagi berlaku.
+5. Uji dengan chatting ke **TigaBe AI**: ajukan pertanyaan yang jawabannya ada di
+   SOP tadi; `cari_dokumen` akan menjawab dengan kutipan dokumen itu.
+
 ## Catatan keamanan
 
 - Jangan pernah menulis password dari chat ke jawaban, log, atau tautan.

@@ -43,6 +43,13 @@ python scripts/jalankan_lokal.py     # MCP + login + admin
 5. `masuk(username, password)` — cadangan (hanya bila user paksa; password terlihat model).
 6. `keluar` — kembali ke peran publik.
 
+## Kelola pengetahuan (admin)
+
+Admin mengelola dokumen lewat halaman `http://127.0.0.1:18105/pengetahuan`:
+unggah **PDF SOP**, pilih **tingkat_akses**, lihat status **MinIO → Qdrant**,
+hapus dokumen yang tidak berlaku, lalu uji dengan chatting ke **TigaBe AI**
+mengajukan pertanyaan yang jawabannya bersumber dari SOP tersebut.
+
 ## Pemantauan
 
 - Halaman admin: `http://127.0.0.1:18105/admin`

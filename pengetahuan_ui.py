@@ -36,7 +36,12 @@ def _opsi_akses(dipilih: str = "public") -> str:
 
 
 def _laman(pesan: str = "", galat: str = "") -> HTMLResponse:
-    docs = knowledge.daftar_pengetahuan()
+    try:
+        docs = knowledge.daftar_pengetahuan()
+        galat_backend = ""
+    except Exception as e:
+        docs = []
+        galat_backend = f"Gagal memuat daftar ({type(e).__name__}). "
 
     tr_docs = "".join(
         f"<tr>"
@@ -58,7 +63,7 @@ def _laman(pesan: str = "", galat: str = "") -> HTMLResponse:
     ) or "<tr><td colspan='7' class='kosong'>Belum ada dokumen pengetahuan.</td></tr>"
 
     pesan_html = f"<p class='ok'>{html.escape(pesan)}</p>" if pesan else ""
-    galat_html = f"<p class='galat'>{html.escape(galat)}</p>" if galat else ""
+    galat_html = f"<p class='galat'>{html.escape(galat or galat_backend)}</p>" if (galat or galat_backend) else ""
 
     return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

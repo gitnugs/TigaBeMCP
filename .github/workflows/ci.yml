@@ -1,0 +1,91 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------- CI
+  ci:
+    name: Compile & smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Python syntax check (semua .py)
+        run: |
+          find . -name "*.py" -not -path "./.venv/*" -print0 \
+            | xargs -0 -n1 python -m py_compile
+
+      # Import tidak butuh Qdrant/MinIO hidup; cukup cek modul & kontrak fungsi.
+      - name: Smoke import (tanpa service eksternal)
+        env:
+          QDRANT_URL: "http://127.0.0.1:1"
+          QDRANT_API_KEY: "dummy"
+          MINIO_PUBLIC_ENDPOINT: "localhost"
+          MINIO_ACCESS_KEY: "dummy"
+          MINIO_SECRET_KEY: "dummy"
+          MINIO_BUCKET: "dummy"
+        run: |
+          python - <<'PY'
+          import importlib.util, pathlib
+          for mod in ("auth", "search", "storage", "knowledge", "audit"):
+              spec = importlib.util.find_spec(mod)
+              assert spec is not None, f"modul {mod} belum ada"
+          print("CI smoke OK")
+          PY
+
+  # ---------------------------------------------------------------- CD
+  deploy:
+    name: Deploy ke server
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pasang kunci SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Deploy (rsync) & restart service
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PATH_REMOTE: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${PORT:-22}" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          rsync -avz \
+            -e "ssh -p ${PORT:-22}" \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude '.git' \
+            --exclude '.env' \
+            --exclude 'roles.json' \
+            --exclude 'login_users.json' \
+            --exclude 'audit_log.json' \
+            ./ "${USER}@${HOST}:${PATH_REMOTE}/"
+
+          # .env DAN file sensitif TIDAK di-deploy; harus sudah ada di server.
+          ssh -p "${PORT:-22}" "${USER}@${HOST}" <<'REMOTE'
+            set -euo pipefail
+            # sesuaikan nama/nilai berikut bila beda
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart tigabe-mcp tigabe-embed
+            sudo systemctl is-active tigabe-mcp tigabe-embed
+          REMOTE

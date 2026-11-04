@@ -1,0 +1,17 @@
+[Unit]
+Description=TigaBe MCP: server + login + admin + pengetahuan
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspaceaitf/TigaBeMCP
+Environment=MCP_HOST=127.0.0.1
+Environment=MCP_PORT=18105
+Environment=MCP_PUBLIC_URL=https://epmcp001.aitalent.web.id/mcp
+Environment=MCP_SESSION_SECRET=ganti-dengan-string-panjang-acak
+ExecStart=/usr/bin/env python3 server.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

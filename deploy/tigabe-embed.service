@@ -1,0 +1,14 @@
+[Unit]
+Description=TigaBe Embedding service (multilingual-e5-small)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspaceaitf/TigaBeMCP
+Environment=HF_HUB_OFFLINE=1
+ExecStart=/usr/bin/env python3 embed_service.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

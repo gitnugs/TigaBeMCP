@@ -8,11 +8,14 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # dependensi lebih dulu agar layer di-cache saat kode berubah
-COPY requirements.txt .
+COPY requirements-mcp.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# kode aplikasi
-COPY . .
+# kode aplikasi (requirements.txt repo TIDAK ikut — berisi torch)
+COPY server.py auth.py oauth_provider.py search.py storage.py embedding.py \
+     knowledge.py ingest.py audit.py admin_page.py pengetahuan_ui.py \
+     scripts/ ./
+COPY .env.example ./
 
 # .env / roles.json / login_users.json / audit_log.json TIDAK di-bake;
 # pasang lewat volume/secret saat run.

@@ -1,0 +1,8 @@
+# Dependencies embedding (E5 model; CPU-only).
+# torch dipasang TERPISAH di Dockerfile.embed (CPU) sebelum ini,
+# supaya sentence-transformers tidak menarik torch CUDA dari PyPI.
+sentence-transformers>=3.0
+fastapi>=0.115
+uvicorn>=0.30
+python-dotenv>=1.0
+httpx>=0.27

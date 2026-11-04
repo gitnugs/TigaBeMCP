@@ -9,8 +9,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# torch/sentence-transformers butuh glibc; slim cukup untuk CPU
-COPY requirements.txt .
+# torch/sentence-transformers (CPU) — image kecil, build cepat
+COPY requirements-embed.txt ./requirements.txt
+# pasang torch CPU lebih dulu agar sentence-transformers TIDAK menarik torch CUDA
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY embed_service.py embedding_lokal.py .

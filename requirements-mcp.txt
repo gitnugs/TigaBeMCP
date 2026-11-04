@@ -1,0 +1,10 @@
+# Dependencies server MCP (ringan: tanpa torch/sentence-transformers)
+mcp>=2,<3
+qdrant-client>=1.12
+minio>=7.2
+python-dotenv>=1.0
+httpx>=0.27
+uvicorn>=0.30
+pymupdf>=1.24
+python-multipart>=0.0.9
+itsdangerous>=2.1

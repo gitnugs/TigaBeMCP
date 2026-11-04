@@ -40,16 +40,21 @@ tidak pernah di file repo.
 
 ```mermaid
 flowchart LR
-    P[push ke main] --> CI[CI: compile + smoke]
+    P[push ke main] --> CI[CI: compile + smoke + build 2 image Docker]
     CI --> CD[CD: rsync ke server]
-    CD --> R[restart tigabe-mcp & tigabe-embed]
+    CD --> R[docker compose up -d --build & recreate]
+    R --> L[logs mcp + embed]
 ```
 
-- **CI** jalan untuk tiap push & PR: syntax-check semua `.py` + smoke import
-  (tanpa butuh Qdrant/MinIO hidup).
-- **CD** jalan otomatis hanya saat push ke `main` (environment `production`):
-  rsync semua file KECUALI `.env`, `roles.json`, `login_users.json`,
-  `audit_log.json`, `.venv`, `__pycache__`, `.git` — lalu restart dua service.
+- **CI** jalan untuk tiap push & PR: syntax-check semua `.py`, smoke import,
+  dan build **kedua image Docker** (`Dockerfile.mcp` + `Dockerfile.embed`)
+  supaya perubahan apapun tervalidasi sebelum deploy.
+- **CD** (hanya push ke `main`, environment `production`): rsync semua file
+  KECUALI file sensitif → `docker compose up -d --build` → recreate kontainer
+  → cetak `docker compose ps` + log ringkas.
+
+Jadi setiap push ke `main` otomatis build ulang dan menjalankan aplikasi sesuai
+perubahan.
 
 ## 4. Keamanan deploy
 

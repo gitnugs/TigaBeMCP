@@ -44,9 +44,10 @@ jobs:
           print("CI smoke OK")
           PY
 
-      - name: Build image Dockerfile.mcp (validasi konteks build)
+      - name: Build kedua image Docker (validasi + cache)
         run: |
-          docker build -f Dockerfile.mcp -t tigabe-mcp:ci --cache-from tigabe-mcp:ci .
+          docker build -f Dockerfile.mcp -t tigabe-mcp:ci .
+          docker build -f Dockerfile.embed -t tigabe-embed:ci .
 
   # ---------------------------------------------------------------- CD
   deploy:
@@ -64,7 +65,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
-      - name: Deploy (rsync) & restart service
+      - name: Deploy (rsync) lalu docker compose build + up
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           PORT: ${{ secrets.DEPLOY_PORT }}
@@ -85,11 +86,17 @@ jobs:
             --exclude 'audit_log.json' \
             ./ "${USER}@${HOST}:${PATH_REMOTE}/"
 
-          # .env DAN file sensitif TIDAK di-deploy; harus sudah ada di server.
-          ssh -p "${PORT:-22}" "${USER}@${HOST}" <<'REMOTE'
-            set -euo pipefail
-            # sesuaikan nama/nilai berikut bila beda
-            sudo systemctl daemon-reload || true
-            sudo systemctl restart tigabe-mcp tigabe-embed
-            sudo systemctl is-active tigabe-mcp tigabe-embed
+          # .env dan file sensitif TIDAK di-deploy; harus sudah ada di server.
+          # Build ulang image sesuai perubahan, lalu recreate kontainer.
+          ssh -p "${PORT:-22}" "${USER}@${HOST}" "set -euo pipefail; cd '${PATH_REMOTE}' && bash -s" <<'REMOTE'
+            if command -v docker >/dev/null 2>&1; then
+              docker compose up -d --build
+            else
+              docker-compose up -d --build
+            fi
+
+            # tunggu sebentar lalu tampilkan status & log ringkas
+            sleep 5
+            docker compose ps
+            docker compose logs --tail=30 mcp embed || true
           REMOTE

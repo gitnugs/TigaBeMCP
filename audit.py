@@ -103,7 +103,7 @@ def terakhir(n: int = 100) -> list[dict]:
 
 
 def kosongkan() -> int:
-    """Hapus seluruh audit (memori + file). Kembalikan jumlah yang dihapus."""
+    """Hapus seluruh audit. (memori + file). Kembalikan jumlah yang dihapus."""
     with _kunci:
         try:
             jumlah = len(_muat_file())

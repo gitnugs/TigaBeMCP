@@ -52,3 +52,12 @@ docker compose up -d
 
 Image TIDAK memuat `.env`, `roles.json`, `login_users.json`, `audit_log.json`,
 `data/`, `models/` (`.dockerignore`). Kredensial hanya lewat `env_file` saat run.
+
+Halaman `/admin` & `/pengetahuan` default hanya bisa dari loopback. Di Docker,
+klien datang dari IP bridge (`172.x`), jadi atur di `docker-compose.yml`:
+
+```yaml
+MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8"
+```
+
+Ganti nilai sesuai jaringan proxy/Docker Anda. Kosongkan = hanya loopback.

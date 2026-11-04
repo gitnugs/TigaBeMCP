@@ -17,6 +17,10 @@ services:
       MCP_PUBLIC_URL: "https://epmcp001.aitalent.web.id/mcp"
       EMBED_URL: "http://embed:18110"     # akses embedding lewat nama service
       MCP_SESSION_SECRET: "GANTI-DENGAN-STRING-PANJANG-ACAK"
+      # Izinkan admin/pengetahuan dari jaringan yang diakses lewat Docker
+      # (di container, client.host = IP bridge 172.x). Restriksi lebih baik di
+      # level reverse proxy; nilai ini contoh untuk Docker.
+      MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8"
     depends_on:
       - embed
     restart: unless-stopped

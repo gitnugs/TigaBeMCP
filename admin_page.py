@@ -38,11 +38,31 @@ _SANDI = os.environ.get("MCP_ADMIN_PASSWORD", "").strip()
 
 
 def _lokal(request: Request) -> bool:
-    """Izinkan hanya klien dari mesin yang sama (keamanan PoC)."""
+    """Izinkan klien loopback ATAU jaringan yang diizinkan lewat env
+    MCP_ALLOW_ADMIN_FROM (dipisah koma). Di dalam Docker, request.client.host
+    adalah IP bridge (172.x), bukan 127.0.0.1 — jadi default tetap aman."""
     host = (request.client.host if request.client else "") or ""
     ip = urlsplit(f"http://{host}").hostname or host
-    return ip in ("127.0.0.1", "::1", "localhost")
-
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    izinkan = [h.strip() for h in os.environ.get("MCP_ALLOW_ADMIN_FROM", "").split(",") if h.strip()]
+    if not izinkan:
+        return False
+    import ipaddress
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entri in izinkan:
+        try:
+            net = ipaddress.ip_network(entri, strict=False)
+        except ValueError:
+            if ip == entri:
+                return True
+            continue
+        if addr in net:
+            return True
+    return False
 
 def _beres(request: Request) -> bool:
     return _lokal(request)

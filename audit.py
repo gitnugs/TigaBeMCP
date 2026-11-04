@@ -1,4 +1,4 @@
-"""Audit log MCP TigaBe: hasil chat/pemanggilan tool disimpan sebagai FILE JSON. --
+"""Audit log MCP TigaBe: hasil chat/pemanggilan tool disimpan sebagai FILE JSON. --ok
 
 Format file: audit_log.json — satu array JSON `[ {...}, {...} ]` (mudah dibuka,
 di-copy, di-parse). Entri juga dipakai halaman /admin/audit.

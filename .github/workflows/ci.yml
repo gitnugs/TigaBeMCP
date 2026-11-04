@@ -44,6 +44,10 @@ jobs:
           print("CI smoke OK")
           PY
 
+      - name: Build image Dockerfile.mcp (validasi konteks build)
+        run: |
+          docker build -f Dockerfile.mcp -t tigabe-mcp:ci --cache-from tigabe-mcp:ci .
+
   # ---------------------------------------------------------------- CD
   deploy:
     name: Deploy ke server

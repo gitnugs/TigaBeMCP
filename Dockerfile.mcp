@@ -1,0 +1,26 @@
+# TigaBe MCP — server + login + admin + pengetahuan
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# dependensi lebih dulu agar layer di-cache saat kode berubah
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# kode aplikasi
+COPY . .
+
+# .env / roles.json / login_users.json / audit_log.json TIDAK di-bake;
+# pasang lewat volume/secret saat run.
+
+EXPOSE 18105
+
+# host 0.0.0.0 agar bisa dipanggil dari container lain / reverse proxy
+ENV MCP_HOST=0.0.0.0 \
+    MCP_PORT=18105
+
+CMD ["python", "server.py"]

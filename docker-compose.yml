@@ -1,0 +1,40 @@
+# ==============================================================
+# TigaBeMCP — dua service: mcp (server) & embed (embedding)
+# ==============================================================
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "18105:18105"
+    env_file:
+      - .env              # letakkan di server (TIDAK di-commit); host MCP di-override di bawah
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "18105"
+      # URL publik yang dipakai popup login browser + metadata OAuth
+      MCP_PUBLIC_URL: "https://epmcp001.aitalent.web.id/mcp"
+      EMBED_URL: "http://embed:18110"     # akses embedding lewat nama service
+      MCP_SESSION_SECRET: "GANTI-DENGAN-STRING-PANJANG-ACAK"
+    depends_on:
+      - embed
+    restart: unless-stopped
+
+  embed:
+    build:
+      context: .
+      dockerfile: Dockerfile.embed
+    ports:
+      - "18110:18110"
+    env_file:
+      - .env
+    environment:
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: "/models"
+    volumes:
+      - tigabe-models:/models          # cache model E5 permanen
+    restart: unless-stopped
+
+volumes:
+  tigabe-models:

@@ -1,0 +1,25 @@
+# TigaBe Embedding — multilingual-e5-small (FastAPI)
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HUB_OFFLINE=1 \
+    HF_HOME=/models
+
+WORKDIR /app
+
+# torch/sentence-transformers butuh glibc; slim cukup untuk CPU
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY embed_service.py embedding_lokal.py .
+
+# Volume model E5 agar tidak mengunduh ulang tiap start.
+# Model bisa di-prefetch lewat:
+#   docker run --rm -v tigabe-models:/models tigabe-embed \
+#     python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', device='cpu')"
+
+EXPOSE 18110
+
+CMD ["uvicorn", "embed_service:app", "--host", "0.0.0.0", "--port", "18110"]

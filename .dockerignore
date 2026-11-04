@@ -1,0 +1,25 @@
+# 1) Secret & data sensitif — JANGAN ikut image/commit
+.env
+roles.json
+login_users.json
+audit_log.json
+data/
+models/
+
+# 2) Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 3) OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 4) test/scratch
+tes.txt

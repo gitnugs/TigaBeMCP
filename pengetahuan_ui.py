@@ -6,12 +6,13 @@ from __future__ import annotations
 import html
 import logging
 import os
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 
 import knowledge
+from storage import buat_document_url
 
 log = logging.getLogger("tigabe.pengetahuan")
 
@@ -63,24 +64,50 @@ def _laman(pesan: str = "", galat: str = "") -> HTMLResponse:
         docs = []
         galat_backend = f"Gagal memuat daftar ({type(e).__name__}). "
 
-    tr_docs = "".join(
-        f"<tr>"
-        f"<td>{html.escape(str(d.get('document_id', '')))}</td>"
-        f"<td>{html.escape(str(d.get('title', '')))}</td>"
-        f"<td>{html.escape(str(d.get('jenis', '')))}</td>"
-        f"<td>{html.escape(str(d.get('tingkat_akses', '')))}</td>"
-        f"<td>{'<span class=ya>✓</span>' if d.get('di_minio') else '<span class=tidak>✗</span>'}</td>"
-        f"<td>{html.escape(str(d.get('chunk_qdrant', 0)))}</td>"
-        f"<td class='none' style='white-space:nowrap'>"
-        f"<form method='POST' action='/pengetahuan/status' style='display:inline'>"
-        f"<input type='hidden' name='document_id' value='{html.escape(str(d.get('document_id', '')))}'>"
-        f"<button class='btn-status'>Status</button></form> "
-        f"<form method='POST' action='/pengetahuan/hapus' style='display:inline' "
-        f"onsubmit=\"return confirm('Hapus dokumen ini?')\">"
-        f"<input type='hidden' name='document_id' value='{html.escape(str(d.get('document_id', '')))}'>"
-        f"<button class='btn-hapus'>Hapus</button></form></td></tr>"
-        for d in docs
-    ) or "<tr><td colspan='7' class='kosong'>Belum ada dokumen pengetahuan.</td></tr>"
+    def _baris(i: int, d: dict) -> str:
+        doc_id = html.escape(str(d.get("document_id", "")))
+        title = html.escape(str(d.get("title", "")))
+        # `meta` dipertahankan di daftar (knowledge.py), tapi jenis/akses juga bisa
+        # ada di tingkat atas tergantung versi; fallback ke meta.
+        meta_d = d.get("meta") or {}
+        jenis = html.escape(str(d.get("jenis") or meta_d.get("jenis") or ""))
+        akses = html.escape(str(d.get("tingkat_akses") or meta_d.get("tingkat_akses") or ""))
+        obj_key_d = d.get("object_key") or (f"{d.get('document_id', '')}.pdf" if d.get("document_id") else "") or ""
+        obj_key = html.escape(str(obj_key_d))
+        doc_id_val = html.escape(str(d.get("document_id", "")))
+        dminio = bool(d.get("di_minio"))
+        if dminio:
+            tombol_preview = (
+                f"<form method='GET' action='/pengetahuan/preview' style='display:inline'>"
+                f"<input type='hidden' name='object_key' value='{obj_key}'>"
+                f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
+                f"<button class='btn-preview'>Preview</button></form> "
+            )
+        else:
+            tombol_preview = ""
+        return (
+            f"<tr>"
+            f"<td class='no'>{i}</td>"
+            f"<td>{doc_id}</td>"
+            f"<td>{title}</td>"
+            f"<td>{jenis}</td>"
+            f"<td>{akses}</td>"
+            f"<td>{'<span class=ya>✓</span>' if dminio else '<span class=tidak>✗</span>'}</td>"
+            f"<td>{html.escape(str(d.get('chunk_qdrant', 0)))}</td>"
+            f"<td class='none' style='white-space:nowrap'>"
+            f"{tombol_preview}"
+            f"<form method='POST' action='/pengetahuan/status' style='display:inline'>"
+            f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
+            f"<button class='btn-status'>Status</button></form> "
+            f"<form method='POST' action='/pengetahuan/hapus' style='display:inline' "
+            f"onsubmit=\"return confirm('Hapus dokumen ini?')\">"
+            f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
+            f"<button class='btn-hapus'>Hapus</button></form></td></tr>"
+        )
+
+    tr_docs = "".join(_baris(i, d) for i, d in enumerate(docs, start=1)) or (
+        "<tr><td colspan='8' class='kosong'>Belum ada dokumen pengetahuan.</td></tr>"
+    )
 
     pesan_html = f"<p class='ok'>{html.escape(pesan)}</p>" if pesan else ""
     galat_html = f"<p class='galat'>{html.escape(galat or galat_backend)}</p>" if (galat or galat_backend) else ""
@@ -97,6 +124,9 @@ th{{background:#eef2f6}}
 .btn{{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600}}
 .btn-hapus{{background:#b3261e;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
 .btn-status{{background:#5f6b76;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
+.btn-preview{{background:#188038;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
+td.no{{text-align:center;color:#5f6b76;font-weight:600;white-space:nowrap}}
+.preview-frame{{width:100%;height:80vh;border:1px solid #cfd6dc;border-radius:8px;background:#fff}}
 input[type=file],select{{padding:8px;border:1px solid #cfd6dc;border-radius:6px;width:100%;box-sizing:border-box;font-family:inherit}}
 textarea{{padding:8px;border:1px solid #cfd6dc;border-radius:6px;width:100%;box-sizing:border-box;font-family:inherit}}
 form.baris{{background:#fff;border:1px solid #e6e9ec;border-radius:8px;padding:14px;margin-top:10px}}
@@ -117,7 +147,7 @@ label.f{{display:block;font-size:.78rem;color:#3f4650;margin:8px 0 3px}}
 {pesan_html}{galat_html}
 
 <h2>📄 Dokumen Pengetahuan</h2>
-<table><tr><th>ID</th><th>Judul</th><th>Jenis</th><th>Akses</th><th>MinIO</th><th>Chunk Qdrant</th><th>Aksi</th></tr>{tr_docs}</table>
+<table><tr><th>No</th><th>ID</th><th>Judul</th><th>Jenis</th><th>Akses</th><th>MinIO</th><th>Chunk Qdrant</th><th>Aksi</th></tr>{tr_docs}</table>
 
 <h2>⬆️ Unggah PDF</h2>
 <form class="baris" method="POST" action="/pengetahuan/unggah" enctype="multipart/form-data">
@@ -161,12 +191,42 @@ pre{{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid
 </div></body></html>""")
 
 
+def _laman_preview(object_key: str, document_id: str, galat: str = "") -> HTMLResponse:
+    """Tampilkan PDF dalam iframe via presigned URL (30 menit) dari MinIO."""
+    try:
+        url = buat_document_url(object_key)
+        galat_js = ""
+    except Exception as e:
+        url = ""
+        galat_js = html.escape(f"Gagal membuat tautan preview ({type(e).__name__}).")
+
+    pesan_html = f"<p class='galat'>{galat_js}</p>" if galat_js else ""
+    judul = html.escape(document_id)
+    return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview {judul}</title><style>
+body{{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:24px}}
+.wrap{{max-width:1000px;margin:0 auto}}
+h1{{font-size:1.2rem}}
+.btn{{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block;margin-bottom:12px}}
+.galat{{color:#b3261e}} .small{{font-size:.75rem;color:#8794a0}}
+.preview-frame{{width:100%;height:82vh;border:1px solid #cfd6dc;border-radius:8px;background:#fff}}
+</style></head><body><div class="wrap">
+<h1>📄 Preview {judul}</h1>
+<p class="small">Tautan PDF berlaku 30 menit (presigned MinIO).</p>
+{pesan_html}
+<p><a class="btn" href="/pengetahuan">← Kembali</a></p>
+{"<iframe class='preview-frame' src='" + html.escape(url) + "' title='Preview PDF'></iframe>" if url else ""}
+</div></body></html>""")
+
+
 def pasang_pengetahuan(mcp) -> None:
     @mcp.custom_route("/pengetahuan", methods=["GET"])
     async def pengetahuan_home(request: Request):
         if not _beres(request):
             return HTMLResponse("<h3>403</h3><p>Halaman pengetahuan hanya dari localhost.</p>", status_code=403)
-        return _laman()
+        pesan = str(request.query_params.get("pesan") or "").strip()
+        return _laman(pesan=pesan)
 
     @mcp.custom_route("/pengetahuan/unggah", methods=["POST"])
     async def unggah_pdf_route(request: Request):
@@ -203,6 +263,16 @@ def pasang_pengetahuan(mcp) -> None:
             log.exception("hapus_pengetahuan gagal")
             return _laman(galat=f"Hapus gagal ({type(e).__name__}).")
         return RedirectResponse("/pengetahuan?pesan=Dokumen+dihapus", status_code=303)
+
+    @mcp.custom_route("/pengetahuan/preview", methods=["GET"])
+    async def preview_pdf_route(request: Request):
+        if not _beres(request):
+            return HTMLResponse("403", status_code=403)
+        object_key = str(request.query_params.get("object_key") or "").strip()
+        document_id = str(request.query_params.get("document_id") or "").strip()
+        if not object_key:
+            return _laman_preview("", document_id, "object_key kosong.")
+        return _laman_preview(object_key, document_id)
 
     @mcp.custom_route("/pengetahuan/status", methods=["POST"])
     async def status_pdf_route(request: Request):

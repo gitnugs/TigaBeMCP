@@ -59,18 +59,32 @@ def daftar_pengetahuan() -> list[dict]:
         for p in pts:
             d = p.payload or {}
             doc_id = d.get("document_id")
-            if not doc_id or doc_id in hasil:
+            if not doc_id:
                 continue
+            meta = _ringkas_meta(d)
+            if doc_id in hasil:
+                # hitung jumlah chunk (titik) milik dokumen ini
+                hasil[doc_id]["chunk_qdrant"] = hasil[doc_id].get("chunk_qdrant", 0) + 1
+                continue
+            object_key = d.get("object_key") or f"{doc_id}.pdf"
             hasil[doc_id] = {
                 "document_id": doc_id,
-                "object_key": d.get("object_key") or f"{doc_id}.pdf",
+                "object_key": object_key,
                 "title": d.get("title") or doc_id,
-                "tingkat_akses": d.get("tingkat_akses"),
+                "jenis": meta.get("jenis") or "",
+                "tingkat_akses": d.get("tingkat_akses") or meta.get("tingkat_akses"),
                 "status": d.get("status"),
-                "meta": _ringkas_meta(d),
+                "chunk_qdrant": 1,
+                "meta": meta,
             }
         if offset is None:
             break
+    # Tandai PDF yang benar-benar ada di MinIO (kolom MinIO + tombol Preview).
+    for entri in hasil.values():
+        try:
+            entri["di_minio"] = ada_objek(entri["object_key"])
+        except Exception:
+            entri["di_minio"] = False
     return list(hasil.values())
 
 

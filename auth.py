@@ -1,4 +1,4 @@
-"""Pemetaan peran dan utilitas akses dokumen MCP TigaBe.
+"""Pemetaan peran dan utilitas akses dokumen MCP TigaBe.-
 
 Peran menentukan tingkat akses dokumen yang boleh dicari di Qdrant. Nilai pada
 `akses` harus sama dengan nilai payload `tingkat_akses` di collection Qdrant.

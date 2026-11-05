@@ -6,13 +6,15 @@ Jalankan:
   python ingest.py --dry --full    # tampilkan teks chunk lengkap
   python ingest.py                 # ingest sungguhan
 """
-import os, re, sys, uuid
+import io, logging, os, re, sys, uuid
 from urllib.parse import urlparse
 
 _here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _here)
 sys.path.insert(0, os.path.dirname(_here))
 from storage import ambil_objek   # sekaligus memuat .env
+
+log = logging.getLogger("tigabe.ingest")
 
 try:
     import pymupdf
@@ -40,6 +42,45 @@ SKIP = re.compile(r"^(Dokumen simulasi SD TigaBe|SD TigaBe - |Halaman \d+$|"
 ID_ONLY = re.compile(r"^[A-Z0-9]+(-[A-Z0-9]+)+$")   # baris yang hanya berisi ID dokumen
 
 
+def _ocr_pdf(data: bytes) -> bytes:
+    """OCR seluruh halaman scan (tanpa teks) menjadi PDF berteks.
+
+    Memakai biner `tesseract` (harus terpasang di image, lihat Dockerfile.mcp)
+    dengan bahasa `OCR_LANG` (default ind+eng). Hasil teks disisipkan per halaman
+    sebagai lapisan teks sehingga `baca_pdf` bisa membacanya.
+    """
+    import shutil, subprocess, tempfile
+
+    if shutil.which("tesseract") is None:
+        raise RuntimeError(
+            "OCR tidak tersedia: biner `tesseract` tidak ditemukan di container. "
+            "File scan tidak dapat diindeks."
+        )
+
+    lang = os.environ.get("OCR_LANG", "ind+eng")
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    out = pymupdf.open()
+    for page in doc:
+        pix = page.get_pixmap(dpi=300)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            pix.save(tmp.name)
+            tmp_name = tmp.name
+        try:
+            hasil = subprocess.run(
+                ["tesseract", tmp_name, "stdout", "-l", lang, "--psm", "6"],
+                check=True, capture_output=True, text=True,
+            )
+        finally:
+            os.unlink(tmp_name)
+        teks = " ".join(hasil.stdout.split())
+        page_out = out.new_page(width=page.rect.width, height=page.rect.height)
+        if teks:
+            page_out.insert_text((10, 10), teks, fontsize=9)
+    buf = io.BytesIO()
+    out.save(buf)
+    return buf.getvalue()
+
+
 def baca_pdf(data: bytes) -> list[tuple[int, str]]:
     doc = pymupdf.open(stream=data, filetype="pdf")
     out = []
@@ -48,6 +89,17 @@ def baca_pdf(data: bytes) -> list[tuple[int, str]]:
             line = " ".join(raw.split())
             if line and not SKIP.match(line):
                 out.append((no, line))
+    if all(t.strip() == "" for _, t in out):
+        # PDF scan (gambar) tanpa teks -> jalankan OCR ulang
+        log.info("PDF tanpa teks; mencoba OCR (lang=%s)", os.environ.get("OCR_LANG", "ind+eng"))
+        data = _ocr_pdf(data)
+        doc = pymupdf.open(stream=data, filetype="pdf")
+        out = []
+        for no, page in enumerate(doc, start=1):
+            for raw in page.get_text("text").splitlines():
+                line = " ".join(raw.split())
+                if line and not SKIP.match(line):
+                    out.append((no, line))
     return out
 
 
@@ -172,6 +224,24 @@ def buat_klien():
                         api_key=os.environ["QDRANT_API_KEY"], timeout=60)
 
 
+def _embed_passages_retry(texts: list[str], upaya: int = 3) -> list[list[float]]:
+    """Embedding dengan retry; layanan embed bisa gagal cold-start (model
+    baru dimuat) pada request pertama setelah deploy/restart."""
+    import time
+    from embedding import embed_passages
+
+    terakhir = None
+    for i in range(upaya):
+        try:
+            return embed_passages(texts)
+        except Exception as e:  # noqa: BLE001 — semua error embed boleh dicoba ulang
+            terakhir = e
+            log.warning("embed_passages gagal (upaya %d/%d): %s", i + 1, upaya, e)
+            if i + 1 < upaya:
+                time.sleep(2 * (i + 1))   # backoff 2s, 4s
+    raise terakhir
+
+
 def dorong_ke_qdrant(meta, chunks) -> int:
     """Vektorisasi + simpan `chunks` satu dokumen ke Qdrant (idempoten).
 
@@ -182,7 +252,7 @@ def dorong_ke_qdrant(meta, chunks) -> int:
         return 0
 
     from qdrant_client import models
-    from embedding import embed_passages, DIM
+    from embedding import DIM
 
     client = buat_klien()
     if not client.collection_exists(COLLECTION):
@@ -200,7 +270,7 @@ def dorong_ke_qdrant(meta, chunks) -> int:
             models.FieldCondition(key="document_id", match=models.MatchValue(value=doc_id))
         ])),
     )
-    vecs = embed_passages([c[1] for c in chunks])
+    vecs = _embed_passages_retry([c[1] for c in chunks])
     points = [
         models.PointStruct(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc_id}|{n}")),

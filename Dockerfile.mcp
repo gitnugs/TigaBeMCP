@@ -7,6 +7,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# tesseract OCR (+ data bahasa Indonesia) untuk PDF hasil scan tanpa teks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-ind \
+    && rm -rf /var/lib/apt/lists/*
+
 # dependensi lebih dulu agar layer di-cache saat kode berubah
 COPY requirements-mcp.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt

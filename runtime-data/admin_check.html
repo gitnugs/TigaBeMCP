@@ -1,0 +1,60 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin TigaBe MCP</title><style>
+body{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:24px}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:1.3rem} h2{font-size:1.05rem;margin-top:28px}
+table{border-collapse:collapse;width:100%;background:#fff;border-radius:8px;overflow:hidden}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e6e9ec;font-size:.86rem}
+th{background:#eef2f6}
+.btn{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600}
+.btn-hapus{background:#b3261e;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}
+input[type=text],input[type=password]{padding:8px;border:1px solid #cfd6dc;border-radius:6px;width:100%;box-sizing:border-box}
+form.baris{background:#fff;border:1px solid #e6e9ec;border-radius:8px;padding:14px;margin-top:10px}
+label.f{display:block;font-size:.78rem;color:#3f4650;margin:8px 0 3px}
+.chip{display:inline-flex;align-items:center;gap:4px;margin:4px 10px 0 0;font-size:.8rem}
+.ok{color:#1b7f4d} .galat{color:#b3261e} .kosong{color:#8794a0}
+.small{font-size:.75rem;color:#8794a0}
+.tab{display:inline-block;padding:6px 14px;border-radius:6px;background:#fff;border:1px solid #d9dee3;
+     color:#3f4650;text-decoration:none;font-size:.85rem;margin-right:6px}
+.tab.aktif{background:#1a73e8;color:#fff;border-color:#1a73e8;font-weight:600}
+</style></head><body><div class="wrap">
+<h1>🛠️ Admin TigaBe MCP</h1>
+<p>
+  <a class="tab aktif" href="/admin">👤 Pengguna &amp; Peran</a>
+  <a class="tab " href="/admin/audit">📜 Audit Chat</a>
+  <a class="tab" href="/pengetahuan">📚 Pengetahuan</a>
+</p>
+<p class="small">Halaman ini hanya bisa dibuka dari komputer ini (localhost).</p>
+
+
+<h2>👤 Pengguna Login</h2>
+<table><tr><th>Username</th><th>Peran</th><th>Nama/Label</th><th></th></tr><tr><td>sari</td><td>guru</td><td>Bu Sari</td><td><form method='POST' action='/admin/user/hapus' style='display:inline'><input type='hidden' name='username' value='sari'><button class='btn-hapus'>Hapus</button></form></td></tr><tr><td>budi</td><td>siswa</td><td>Budi</td><td><form method='POST' action='/admin/user/hapus' style='display:inline'><input type='hidden' name='username' value='budi'><button class='btn-hapus'>Hapus</button></form></td></tr><tr><td>bayu</td><td>orang_tua</td><td>bayu</td><td><form method='POST' action='/admin/user/hapus' style='display:inline'><input type='hidden' name='username' value='bayu'><button class='btn-hapus'>Hapus</button></form></td></tr><tr><td>badar</td><td>kepala_sekolah</td><td>badar a</td><td><form method='POST' action='/admin/user/hapus' style='display:inline'><input type='hidden' name='username' value='badar'><button class='btn-hapus'>Hapus</button></form></td></tr><tr><td>bima</td><td>orang_tua</td><td>Bima H</td><td><form method='POST' action='/admin/user/hapus' style='display:inline'><input type='hidden' name='username' value='bima'><button class='btn-hapus'>Hapus</button></form></td></tr></table>
+
+<form class="baris" method="POST" action="/admin/user/simpan">
+  <b>Tambah / Ubah Pengguna</b>
+  <label class="f">Username</label><input type="text" name="username" required>
+  <label class="f">Password (kosongkan bila tetap)</label><input type="password" name="password">
+  <label class="f">Nama/Label (opsional)</label><input type="text" name="label">
+  <label class="f">Peran</label>
+  <select name="peran"><option value="publik">publik</option><option value="siswa">siswa</option><option value="orang_tua">orang_tua</option><option value="guru">guru</option><option value="kepala_sekolah">kepala_sekolah</option></select>
+  <p><button class="btn">Simpan Pengguna</button></p>
+</form>
+
+<h2>🎭 Peran (akses dokumen)</h2>
+<table><tr><th>Nama</th><th>Label</th><th>Akses</th><th>Asal</th><th></th></tr><tr><td>publik</td><td>Publik</td><td>public</td><td>bawaan</td><td>—</td></tr><tr><td>siswa</td><td>Siswa</td><td>public, class</td><td>bawaan</td><td>—</td></tr><tr><td>orang_tua</td><td>Orang Tua/Wali</td><td>public</td><td>bawaan</td><td>—</td></tr><tr><td>guru</td><td>Guru</td><td>public, class</td><td>bawaan</td><td>—</td></tr><tr><td>kepala_sekolah</td><td>Kepala Sekolah</td><td>semua dokumen</td><td>bawaan</td><td>—</td></tr></table>
+
+<form class="baris" method="POST" action="/admin/peran/simpan">
+  <b>Tambah / Ubah Peran</b>
+  <label class="f">Nama peran (tanpa spasi)</label><input type="text" name="nama" required pattern="[a-z_]+" >
+  <label class="f">Label</label><input type="text" name="label">
+  <label class="f">Tingkat akses dokumen</label>
+  <label class='chip'><input type='checkbox' name='akses' value='public'> public</label><label class='chip'><input type='checkbox' name='akses' value='class'> class</label><label class='chip'><input type='checkbox' name='akses' value='internal'> internal</label><label class='chip'><input type='checkbox' name='akses' value='restricted'> restricted</label>
+  <label class="chip"><input type="checkbox" name="semua"> semua_akses (boleh semua dokumen)</label>
+  <p><button class="btn">Simpan Peran</button></p>
+</form>
+
+<p class="small">Catatan: nilai akses harus sama dengan payload <code>tingkat_akses</code> di Qdrant.
+Hapus peran kustom tidak akan menghapus user yang memakainya.<br>
+Token statis tersisa di roles.json: 0.</p>
+</div></body></html>

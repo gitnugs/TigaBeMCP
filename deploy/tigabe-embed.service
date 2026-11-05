@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/workspaceaitf/TigaBeMCP
+WorkingDirectory=/workspaceaitf/TigaBeMCP/TigaBe-ok
 Environment=HF_HUB_OFFLINE=1
 ExecStart=/usr/bin/env python3 embed_service.py
 Restart=always

@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/workspaceaitf/TigaBeMCP
+WorkingDirectory=/workspaceaitf/TigaBeMCP/TigaBe-ok
 Environment=MCP_HOST=127.0.0.1
 Environment=MCP_PORT=18105
 Environment=MCP_PUBLIC_URL=https://epmcp001.aitalent.web.id/mcp

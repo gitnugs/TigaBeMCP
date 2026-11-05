@@ -7,7 +7,7 @@ Dua layanan harus berjalan di server: MCP (`server.py`) dan embedding
 
 ```bash
 # pastikan repo sudah ada
-cd /workspaceaitf/TigaBeMCP
+cd /workspaceaitf/TigaBeMCP/TigaBe-ok
 
 # env rahasia HARUS sudah ada di server (tidak pernah di-commit/deploy)
 test -f .env || echo "SALIN .env ke server!"
@@ -25,12 +25,18 @@ sudo systemctl status --no-pager tigabe-mcp tigabe-embed
 
 ## 2. Secrets GitHub (Settings → Secrets → Actions)
 
+CI/CD **menarik (pull) repo dari GitHub ke folder** di server, lalu build &
+jalankan Docker. Pastikan folder tujuan di server sudah ada dan isinya
+repository ini.
+
+Folder standar: **`/workspaceaitf/TigaBeMCP/TigaBe-ok`**.
+
 | Nama | Isi |
 | --- | --- |
 | `DEPLOY_HOST` | `epmcp001.aitalent.web.id` (atau IP server) |
 | `DEPLOY_PORT` | port SSH, mis. `22` (kosongkan bila 22) |
 | `DEPLOY_USER` | user SSH, mis. `root` |
-| `DEPLOY_PATH` | path remote, mis. `/workspaceaitf/TigaBeMCP` |
+| `DEPLOY_PATH` | path remote, mis. `/workspaceaitf/TigaBeMCP/TigaBe-ok` |
 | `DEPLOY_SSH_KEY` | private key yang cocok dengan `~/.ssh/id_ed25519.pub` di server |
 
 Penting: `DEPLOY_SSH_KEY` adalah private key — disimpan sebagai **GitHub secret**,

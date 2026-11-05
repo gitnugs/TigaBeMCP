@@ -2,16 +2,24 @@
 set -eu
 
 # Pastikan model E5 tersedia di /models (named volume tigabe-models).
-# Volume mungkin berisi sisa kosong (mis. .agent_harnesses.json, xet) dari
-# download HF sebelumnya — jadi JANGAN cek "folder kosong"; cek eksistensi
-# folder cache model yang sebenarnya.
+#
+# Volume bisa berisi sisa/state tak lengkap (mis. hasil download yang putus,
+# .agent_harnesses.json, xet). JANGAN hanya cek "folder kosong" atau
+# "folder ada" — verifikasi berkas model (model.safetensors) benar-benar ada.
+# Bila tidak ada, salin ulang dari bake image (/models_baked).
 MODEL_CACHE="models--intfloat--multilingual-e5-small"
+MODEL_DIR="/models/$MODEL_CACHE"
 
-if [ -d /models_baked ] && [ ! -d "/models/$MODEL_CACHE" ]; then
-    echo "[entrypoint] seeding /models dari /models_baked (model $MODEL_CACHE belum ada)"
+perlu_seed=1
+if [ -d "$MODEL_DIR" ] && find "$MODEL_DIR" -name 'model.safetensors' -print -quit 2>/dev/null | grep -q .; then
+    perlu_seed=0
+fi
+
+if [ -d /models_baked ] && [ "$perlu_seed" = "1" ]; then
+    echo "[entrypoint] seeding /models dari /models_baked (model belum lengkap)"
     mkdir -p /models
     cp -a /models_baked/. /models/
-    echo "[entrypoint] seed selesai: $(find /models -name model.safetensors | head -1)"
+    echo "[entrypoint] seed selesai: $(find "$MODEL_DIR" -name model.safetensors -print -quit 2>/dev/null)"
 fi
 
 exec "$@"

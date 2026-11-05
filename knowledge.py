@@ -8,6 +8,7 @@ menjadi kontrak bersama UI.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -21,6 +22,8 @@ load_dotenv(os.path.join(_here, ".env"))
 
 from storage import unggah_objek, ada_objek, hapus_objek  # noqa: E402
 from ingest import proses_pdf, dorong_ke_qdrant, buat_klien, COLLECTION  # noqa: E402
+
+log = logging.getLogger("tigabe.knowledge")
 
 # Kunci internal per-chunk di payload Qdrant; jangan tampilkan sebagai meta.
 _KUNCI_INTERNAL = {"text", "object_key", "page", "page_end", "pasal", "section"}

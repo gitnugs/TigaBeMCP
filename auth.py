@@ -138,11 +138,31 @@ def ringkas_peran(peran: Peran) -> dict:
     }
 
 
+def _ip_lokal() -> list[str]:
+    """Deteksi alamat IPv4 LAN host ini (non-loopback) agar akses via IP server
+    tidak ditolak dengan 421 Misdirected Request."""
+    import socket
+    hasil = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            hasil.append(s.getsockname()[0])
+        finally:
+            s.close()
+    except OSError:
+        pass
+    return hasil
+
+
 def host_diizinkan() -> list[str]:
     host = urlparse(PUBLIC_URL).hostname
-    dasar = ["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*"]
+    dasar = ["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "[::1]", "[::1]:*"]
     if host:
         dasar += [host, f"{host}:*"]
+    # izinkan IP LAN host ini + port wildcard (penting saat bind 0.0.0.0)
+    for ip in _ip_lokal():
+        dasar += [ip, f"{ip}:*"]
     tambahan = os.environ.get("MCP_ALLOWED_HOSTS", "")
     dasar += [h.strip() for h in tambahan.split(",") if h.strip()]
     return list(dict.fromkeys(dasar))

@@ -15,12 +15,14 @@ services:
       MCP_PORT: "18105"
       # URL publik yang dipakai popup login browser + metadata OAuth
       MCP_PUBLIC_URL: "https://epmcp001.aitalent.web.id/mcp"
-      EMBED_URL: "http://187.77.114.31:18110"     # akses embedding lewat nama service
+      EMBED_URL: "http://embed:18110"     # akses embedding lewat nama service
       MCP_SESSION_SECRET: "GANTI-DENGAN-STRING-PANJANG-ACAK"
       # Izinkan admin/pengetahuan dari jaringan yang diakses lewat Docker
-      # (di container, client.host = IP bridge 172.x). Restriksi lebih baik di
-      # level reverse proxy; nilai ini contoh untuk Docker.
-      MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8"
+      MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8,10.0.0.0/8,192.168.0.0/16"
+      # Karena diakses langsung lewat IP server, matikan validasi Host agar
+      # tidak 421. Jangan nonaktifkan jika sudah ada reverse proxy/Cloudflare.
+      MCP_DISABLE_REBINDING: "1"
+      MCP_ALLOWED_HOSTS: "10.193.63.12,10.193.63.12:*"
     depends_on:
       - embed
     restart: unless-stopped

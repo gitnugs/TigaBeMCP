@@ -252,7 +252,9 @@ def jalankan() -> None:
         stateless_http=True,
         host=host,
         transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
+            # Nonaktifkan proteksi DNS rebinding bila diminta (akses via IP LAN
+            # tanpa reverse proxy). Default tetap True (aman).
+            enable_dns_rebinding_protection=os.environ.get("MCP_DISABLE_REBINDING", "") != "1",
             allowed_hosts=host_diizinkan(),
             allowed_origins=origin_diizinkan(),
         ),

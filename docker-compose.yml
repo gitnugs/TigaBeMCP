@@ -23,6 +23,13 @@ services:
       # tidak 421. Jangan nonaktifkan jika sudah ada reverse proxy/Cloudflare.
       MCP_DISABLE_REBINDING: "1"
       MCP_ALLOWED_HOSTS: "10.193.63.12,10.193.63.12:*"
+      # Path file data runtime: simpan di volume agar tidak hilang saat
+      # kontainer di-recreate oleh CI/CD.
+      MCP_LOGIN_USERS: /data/login_users.json
+      MCP_AUDIT_FILE: /data/audit_log.json
+      MCP_ROLES_FILE: /data/roles.json
+    volumes:
+      - tigabe-data:/data
     depends_on:
       - embed
     restart: unless-stopped
@@ -44,3 +51,4 @@ services:
 
 volumes:
   tigabe-models:
+  tigabe-data:

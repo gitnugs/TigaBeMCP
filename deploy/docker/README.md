@@ -48,16 +48,22 @@ docker compose build
 docker compose up -d
 ```
 
-## 5. Keamanan
+## 5. Keamanan & data runtime
 
 Image TIDAK memuat `.env`, `roles.json`, `login_users.json`, `audit_log.json`,
 `data/`, `models/` (`.dockerignore`). Kredensial hanya lewat `env_file` saat run.
 
-Halaman `/admin` & `/pengetahuan` default hanya bisa dari loopback. Di Docker,
-klien datang dari IP bridge (`172.x`), jadi atur di `docker-compose.yml`:
+File data runtime (login user, peran, audit) disimpan di **named volume
+`tigabe-data`** (mount `/data` di container mcp), sehingga tidak hilang saat
+CI/CD merecreate kontainer. Saat first deploy volume kosong: server otomatis
+membuat `login_users.json`/`roles.json` kosong, dan Anda bisa menambah user
+pertama lewat halaman admin `/admin`.
+
+Halaman `/admin` & `/pengetahuan` default hanya bisa dari loopback; di Docker
+klien datang dari IP bridge. Atur di `docker-compose.yml`:
 
 ```yaml
 MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8"
 ```
 
-Ganti nilai sesuai jaringan proxy/Docker Anda. Kosongkan = hanya loopback.
+Ganti sesuai jaringan proxy/Docker. Kosongkan = hanya loopback.

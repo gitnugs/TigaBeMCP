@@ -86,6 +86,10 @@ def verifikasi_password(tercatat: str, password: str) -> bool:
 
 def muat_users() -> dict[str, dict]:
     try:
+        if not _LOGIN_FILE.exists():
+            _LOGIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _LOGIN_FILE.write_text('{"users": []}\n', encoding="utf-8")
+            return {}
         data = json.loads(_LOGIN_FILE.read_text(encoding="utf-8"))
         out = {}
         for u in data.get("users", []):

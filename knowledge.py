@@ -99,7 +99,17 @@ def unggah_pdf(data: bytes, nama_file: str, tingkat_akses: str, keterangan: str 
         fallback_id = os.path.splitext(os.path.basename(nama_file))[0].upper()
         meta, chunks = proses_pdf(data, overrides={"document_id": fallback_id})
 
-    doc_id = meta["document_id"]
+    doc_id = meta["document_id"].strip()
+    if not doc_id:
+        raise ValueError("document_id kosong setelah parse; PDF tidak terbaca/header tidak dikenali.")
+
+    if not chunks:
+        raise ValueError(
+            "Tidak ada isi yang bisa dipotong (chunk) dari PDF ini. "
+            "Kemungkinan PDF berupa hasil scan (gambar) tanpa teks, atau format header "
+            "tidak dikenali. Upload tidak disimpan agar daftar tidak berisi dokumen kosong."
+        )
+
     object_key = f"{doc_id}.pdf"
 
     final_meta = dict(meta)
@@ -113,12 +123,14 @@ def unggah_pdf(data: bytes, nama_file: str, tingkat_akses: str, keterangan: str 
     chunk_qdrant, qdrant_ok = 0, False
 
     try:
+        # `unggah_objek` sukses = PDF benar-benar tersimpan. JANGAN andalkan
+        # ada_objek() seketika — MinIO/S3 eventually consistent (~1-2 detik).
         unggah_objek(object_key, data)
-        di_minio = ada_objek(object_key)
-        minio_ok = di_minio
+        minio_ok = True
     except Exception as _e:
         minio_ok = False
-        di_minio = ada_objek(object_key)
+    # untuk tampilan kolom MinIO, tetap cek (toleran eventual consistency)
+    di_minio = ada_objek(object_key) if minio_ok else False
 
     try:
         chunk_qdrant = dorong_ke_qdrant(final_meta, chunks)

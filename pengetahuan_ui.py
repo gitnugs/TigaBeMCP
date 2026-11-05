@@ -243,11 +243,20 @@ def pasang_pengetahuan(mcp) -> None:
         if not data_bytes:
             return _laman(galat="Berkas PDF kosong.")
         try:
-            knowledge.unggah_pdf(data_bytes, nama_file, tingkat_akses, keterangan)
+            hasil = knowledge.unggah_pdf(data_bytes, nama_file, tingkat_akses, keterangan)
         except Exception as e:
             log.exception("unggah_pdf gagal")
-            return _laman(galat=f"Unggah gagal ({type(e).__name__}).")
-        return RedirectResponse("/pengetahuan?pesan=Dokumen+diunggah", status_code=303)
+            return _laman(galat=f"Unggah gagal: {type(e).__name__}: {str(e)[:200]}")
+        status = hasil.get("status")
+        if status == "lengkap":
+            pesan = f"Dokumen ditambahkan: {hasil.get('document_id')} ({hasil.get('chunk_qdrant')} chunk)."
+        elif status == "minio":
+            return _laman(galat=f"PDF tersimpan di MinIO tapi GAGAL di-indeks ke Qdrant ({hasil.get('document_id')}). Dokumen belum bisa dicari/daftar.")
+        elif status == "qdrant":
+            return _laman(galat=f"Tervermda di Qdrant tapi PDF belum tersimpan di MinIO ({hasil.get('document_id')}).")
+        else:
+            return _laman(galat=f"Unggah gagal (status={status}) untuk {hasil.get('document_id')}.")
+        return RedirectResponse(f"/pengetahuan?pesan={quote(pesan)}", status_code=303)
 
     @mcp.custom_route("/pengetahuan/hapus", methods=["POST"])
     async def hapus_pdf_route(request: Request):

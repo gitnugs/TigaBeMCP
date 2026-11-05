@@ -59,7 +59,7 @@ def parse_header(lines):
     nilai, kunci = {}, None
     for t in texts[i0:i1]:
         for k, label in LABELS:
-            m = re.match(rf"^{re.escape(label)}\b\s*(.*)$", t)
+            m = re.match(rf"^{re.escape(label)}\b\s*:?\s*(.*)$", t)
             if m:
                 kunci = k
                 nilai[k] = [m.group(1)] if m.group(1) else []

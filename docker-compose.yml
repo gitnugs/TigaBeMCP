@@ -32,8 +32,7 @@ services:
       # bind mount: folder HOST ./runtime-data -> /data di container
       - ./runtime-data:/data
     depends_on:
-      embed:
-        condition: service_healthy
+      - embed
     restart: unless-stopped
 
   embed:

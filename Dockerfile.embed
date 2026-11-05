@@ -15,13 +15,17 @@ COPY requirements-embed.txt ./requirements.txt
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY embed_service.py embedding_lokal.py .
+COPY embed_service.py embedding_lokal.py entrypoint.sh ./
+RUN chmod +x /app/entrypoint.sh
 
-# Volume model E5 agar tidak mengunduh ulang tiap start.
-# Model bisa di-prefetch lewat:
-#   docker run --rm -v tigabe-models:/models tigabe-embed \
-#     python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', device='cpu')"
+# Prefetch model E5 SAAT BUILD (internet tersedia). Disimpan di /models_baked
+# (BUKAN /models) agar saat runtime named volume `tigabe-models:/models`
+# menutupi isi image, model hasil bake tidak hilang. Entrypoint akan
+# menyalin /models_baked -> /models hanya bila volume masih kosong.
+ENV HF_HUB_OFFLINE=0
+RUN python -c "from sentence_transformers import SentenceTransformer; m=SentenceTransformer('intfloat/multilingual-e5-small', cache_folder='/models_baked', device='cpu'); print('MODEL PREFETCH OK dim', m.get_sentence_embedding_dimension())"
 
 EXPOSE 18110
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "embed_service:app", "--host", "0.0.0.0", "--port", "18110"]

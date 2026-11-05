@@ -7,6 +7,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Izin menulis package ke GHCR
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Owner repo menentukan namespace GHCR (huruf kecil). Contoh: gitnugs
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/tigabe-mcp
+
 jobs:
   # ---------------------------------------------------------------- CI
   ci:
@@ -44,15 +54,61 @@ jobs:
           print("CI smoke OK")
           PY
 
-      - name: Build kedua image Docker (validasi + cache)
-        run: |
-          docker build -f Dockerfile.mcp -t tigabe-mcp:ci .
-          docker build -f Dockerfile.embed -t tigabe-embed:ci .
+
+  # ---------------------------------------------------------------- BUILD + PUSH
+  # Build DUA image di GitHub Actions (internet tersedia -> model E5 ter-bake),
+  # lalu push ke GHCR. Server tinggal `docker compose pull && up -d`
+  # (TIDAK butuh akses huggingface.co di server).
+  build-push:
+    name: Build & push ke GHCR
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login ke GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image mcp
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE_BASE }}-mcp:main
+            ${{ env.IMAGE_BASE }}-mcp:sha-${{ github.sha }}
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,mode=max,scope=mcp
+
+      - name: Build & push image embed
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.embed
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE_BASE }}-embed:main
+            ${{ env.IMAGE_BASE }}-embed:sha-${{ github.sha }}
+          cache-from: type=gha,scope=embed
+          cache-to: type=gha,mode=max,scope=embed
+
 
   # ---------------------------------------------------------------- CD
   deploy:
-    name: Deploy ke server
-    needs: ci
+    name: Deploy ke server (pull GHCR + up)
+    needs: build-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
@@ -65,7 +121,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
-      - name: Deploy (rsync) lalu docker compose build + up
+      - name: Rsync file konfigurasi (tanpa .env/sensitif)
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           PORT: ${{ secrets.DEPLOY_PORT }}
@@ -75,28 +131,47 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh
           ssh-keyscan -p "${PORT:-22}" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          # Hanya kirim berkas yang perlu untuk `docker compose -f docker-compose.prod.yml pull`
           rsync -avz \
             -e "ssh -p ${PORT:-22}" \
-            --exclude '.venv' \
-            --exclude '__pycache__' \
-            --exclude '.git' \
-            --exclude '.env' \
-            --exclude 'roles.json' \
-            --exclude 'login_users.json' \
-            --exclude 'audit_log.json' \
-            ./ "${USER}@${HOST}:${PATH_REMOTE}/"
+            --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
+            --exclude '.env' --exclude 'roles.json' --exclude 'login_users.json' \
+            --exclude 'audit_log.json' --exclude 'runtime-data' \
+            docker-compose.prod.yml deploy/ \
+            "${USER}@${HOST}:${PATH_REMOTE}/"
 
-          # .env dan file sensitif TIDAK di-deploy; harus sudah ada di server.
-          # Build ulang image sesuai perubahan, lalu recreate kontainer.
-          ssh -p "${PORT:-22}" "${USER}@${HOST}" "set -euo pipefail; cd '${PATH_REMOTE}' && bash -s" <<'REMOTE'
-            if command -v docker >/dev/null 2>&1; then
-              docker compose up -d --build
-            else
-              docker-compose up -d --build
+      - name: Logout GHCR di server lalu pull & up
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PATH_REMOTE: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.DEPLOY_GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Kredensial GHCR diteruskan sebagai env ke bash jarak jauh (bukan di-
+          # tulis di file/heredoc) agar tidak bocor ke Logs/History Actions.
+          ssh -p "${PORT:-22}" "${USER}@${HOST}" \
+            "PATH_REMOTE='${PATH_REMOTE}' GHCR_USER='${GHCR_USER}' GHCR_TOKEN='${GHCR_TOKEN}' bash -s" <<'REMOTE'
+            set -euo pipefail
+            cd "${PATH_REMOTE}"
+
+            # Login ke GHCR pakai PAT (read:packages). Bila image sudah PUBLIC,
+            # `docker pull` anonim cukup dan baris ini boleh dihapus.
+            if [ -n "${GHCR_TOKEN}" ] && [ -n "${GHCR_USER}" ]; then
+              echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
             fi
 
-            # tunggu sebentar lalu tampilkan status & log ringkas
+            if command -v docker >/dev/null 2>&1; then
+              DC="docker compose"
+            else
+              DC="docker-compose"
+            fi
+            "$DC" -f docker-compose.prod.yml pull
+            "$DC" -f docker-compose.prod.yml up -d
+
             sleep 5
-            docker compose ps
-            docker compose logs --tail=30 mcp embed || true
+            "$DC" -f docker-compose.prod.yml ps
+            "$DC" -f docker-compose.prod.yml logs --tail=30 mcp embed || true
           REMOTE

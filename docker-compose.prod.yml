@@ -1,0 +1,58 @@
+# ==============================================================
+# TigaBeMCP — PRODUKSI: ambil image dari GHCR (bukan build di server)
+# ==============================================================
+# Server TIDAK perlu internet ke huggingface.co/pypi lagi: image sudah
+# di-build di GitHub Actions (model E5 ter-bake) lalu dipush ke GHCR.
+# Server tinggal:  docker compose -f docker-compose.prod.yml pull && up -d
+#
+# ENV di sini SAMA dengan docker-compose.yml. Kalau mengubah env di salah
+# satu, samakan juga yang lain (drif = bug produksi yang sulit dilacak).
+services:
+  mcp:
+    image: ghcr.io/gitnugs/tigabe-mcp-mcp:main
+    pull_policy: always
+    ports:
+      - "18105:18105"
+    env_file:
+      - .env              # letakkan di server (TIDAK di-commit); host MCP di-override di bawah
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "18105"
+      # URL publik yang dipakai popup login browser + metadata OAuth
+      MCP_PUBLIC_URL: "https://epmcp001.aitalent.web.id/mcp"
+      EMBED_URL: "http://embed:18110"     # akses embedding lewat nama service
+      MCP_SESSION_SECRET: "GANTI-DENGAN-STRING-PANJANG-ACAK"
+      # Izinkan admin/pengetahuan dari jaringan yang diakses lewat Docker
+      MCP_ALLOW_ADMIN_FROM: "172.0.0.0/8,10.0.0.0/8,192.168.0.0/16"
+      # Karena diakses langsung lewat IP server, matikan validasi Host agar
+      # tidak 421. Jangan nonaktifkan jika sudah ada reverse proxy/Cloudflare.
+      MCP_DISABLE_REBINDING: "1"
+      MCP_ALLOWED_HOSTS: "10.193.63.12,10.193.63.12:*"
+      # Path file data runtime: simpan di folder host ./runtime-data agar
+      # file yang dibuat manual di server langsung terbaca (bind mount).
+      MCP_LOGIN_USERS: /data/login_users.json
+      MCP_AUDIT_FILE: /data/audit_log.json
+      MCP_ROLES_FILE: /data/roles.json
+    volumes:
+      # bind mount: folder HOST ./runtime-data -> /data di container
+      - ./runtime-data:/data
+    depends_on:
+      - embed
+    restart: unless-stopped
+
+  embed:
+    image: ghcr.io/gitnugs/tigabe-mcp-embed:main
+    pull_policy: always
+    ports:
+      - "18110:18110"
+    env_file:
+      - .env
+    environment:
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: "/models"
+    volumes:
+      - tigabe-models:/models          # cache model E5 permanen (di-seed oleh entrypoint)
+    restart: unless-stopped
+
+volumes:
+  tigabe-models:

@@ -128,6 +128,7 @@ def unggah_pdf(data: bytes, nama_file: str, tingkat_akses: str, keterangan: str 
         unggah_objek(object_key, data)
         minio_ok = True
     except Exception as _e:
+        log.exception("unggah_objek gagal untuk %s", object_key)
         minio_ok = False
     # untuk tampilan kolom MinIO, tetap cek (toleran eventual consistency)
     di_minio = ada_objek(object_key) if minio_ok else False
@@ -136,6 +137,7 @@ def unggah_pdf(data: bytes, nama_file: str, tingkat_akses: str, keterangan: str 
         chunk_qdrant = dorong_ke_qdrant(final_meta, chunks)
         qdrant_ok = True
     except Exception as _e:
+        log.exception("dorong_ke_qdrant gagal untuk %s (final_meta=%s)", doc_id, final_meta)
         qdrant_ok = False
         chunk_qdrant = 0
 

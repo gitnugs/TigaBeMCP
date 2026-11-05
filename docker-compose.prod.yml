@@ -37,7 +37,8 @@ services:
       # bind mount: folder HOST ./runtime-data -> /data di container
       - ./runtime-data:/data
     depends_on:
-      - embed
+      embed:
+        condition: service_healthy
     restart: unless-stopped
 
   embed:
@@ -50,6 +51,12 @@ services:
     environment:
       HF_HUB_OFFLINE: "1"
       HF_HOME: "/models"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:18110/health', timeout=5); sys.exit(0)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     volumes:
       - tigabe-models:/models          # cache model E5 permanen (di-seed oleh entrypoint)
     restart: unless-stopped

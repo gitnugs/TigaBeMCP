@@ -224,12 +224,38 @@ def buat_klien():
                         api_key=os.environ["QDRANT_API_KEY"], timeout=60)
 
 
-def _embed_passages_retry(texts: list[str], upaya: int = 3) -> list[list[float]]:
-    """Embedding dengan retry; layanan embed bisa gagal cold-start (model
-    baru dimuat) pada request pertama setelah deploy/restart."""
+def _embed_ready(waktu_tunggu: float = 120.0) -> None:
+    """Tunggu sampai layanan embed siap (model termuat) sebelum embedding.
+
+    /health hanya 200 setelah model E5 selesai dimuat (lifespan warm-up).
+    Tanpa ini, upload tepat setelah deploy/restart akan kena connection
+    refused karena embed masih loading berat (~30-60 detik di CPU).
+    """
+    import time
+
+    import httpx
+
+    url = os.environ.get("EMBED_URL", "http://127.0.0.1:18110").rstrip("/")
+    batas = time.monotonic() + waktu_tunggu
+    terakhir = None
+    while time.monotonic() < batas:
+        try:
+            r = httpx.get(f"{url}/health", timeout=5)
+            r.raise_for_status()
+            return
+        except Exception as e:  # noqa: BLE001 — semua error readiness boleh ditunggu
+            terakhir = e
+            time.sleep(2)
+    raise RuntimeError(f"Layanan embedding tidak siap setelah {waktu_tunggu:.0f}s: {terakhir}")
+
+
+def _embed_passages_retry(texts: list[str], upaya: int = 5) -> list[list[float]]:
+    """Embedding dengan readiness gate + retry; layanan embed bisa gagal
+    cold-start (model baru dimuat) pada request pertama setelah deploy."""
     import time
     from embedding import embed_passages
 
+    _embed_ready()
     terakhir = None
     for i in range(upaya):
         try:
@@ -238,7 +264,7 @@ def _embed_passages_retry(texts: list[str], upaya: int = 3) -> list[list[float]]
             terakhir = e
             log.warning("embed_passages gagal (upaya %d/%d): %s", i + 1, upaya, e)
             if i + 1 < upaya:
-                time.sleep(2 * (i + 1))   # backoff 2s, 4s
+                time.sleep(2 * (i + 1))   # backoff 2s, 4s, 6s, 8s
     raise terakhir
 
 

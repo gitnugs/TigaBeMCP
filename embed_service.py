@@ -1,12 +1,24 @@
 import os, threading
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 import embedding_lokal as lokal          # model dimuat saat service start
 
 TOKEN = os.environ.get("EMBED_TOKEN")    # opsional, tapi disarankan
 lock = threading.Lock()                  # satu inferensi pada satu waktu
-app = FastAPI(title="TigaBe Embedding")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Muat model SEKALI di startup agar "Application startup complete" hanya
+    # muncul setelah model siap. Tanpa ini, request pertama dari MCP akan kena
+    # model belum dimuat (lazy) -> error_embed. Warm-up ini menghilangkannya.
+    lokal._get_model()
+    yield
+
+
+app = FastAPI(title="TigaBe Embedding", lifespan=lifespan)
 
 
 class Teks(BaseModel):

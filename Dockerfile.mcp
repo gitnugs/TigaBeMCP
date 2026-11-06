@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # kode aplikasi (requirements.txt repo TIDAK ikut — berisi torch)
 COPY server.py auth.py oauth_provider.py search.py storage.py embedding.py \
-     knowledge.py ingest.py audit.py admin_page.py pengetahuan_ui.py ./
+     knowledge.py ingest.py audit.py admin_page.py pengetahuan_ui.py \
+     html_theme.py ./
 COPY scripts/ ./scripts/
 COPY .env.example ./
 

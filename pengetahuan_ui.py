@@ -13,8 +13,20 @@ from starlette.responses import HTMLResponse, RedirectResponse
 
 import knowledge
 from storage import buat_document_url
+from html_theme import IKON, wadah
 
 log = logging.getLogger("tigabe.pengetahuan")
+
+_AKSES_TINGKAT = ("public", "class", "internal", "restricted")
+
+# Status unggah/status dokumen -> tampilan
+_STATUS_PETA = {
+    "lengkap": ("pill-success", "Lengkap"),
+    "minio": ("pill-warn", "Hanya MinIO"),
+    "qdrant": ("pill-warn", "Hanya Qdrant"),
+    "gagal": ("pill-danger", "Gagal"),
+    "dihapus": ("pill-success", "Dihapus"),
+}
 
 
 def _lokal(request: Request) -> bool:
@@ -49,11 +61,25 @@ def _beres(request: Request) -> bool:
 
 def _opsi_akses(dipilih: str = "public") -> str:
     """Pilihan tingkat_akses untuk form unggah."""
-    opsi = ["public", "class", "internal", "restricted"]
     return "".join(
         f"<option value='{a}' {'selected' if a == dipilih else ''}>{a}</option>"
-        for a in opsi
+        for a in _AKSES_TINGKAT
     )
+
+
+def _pillin(teks: str, kelas: str) -> str:
+    return f"<span class='pill {kelas}'>{html.escape(teks)}</span>"
+
+
+def _pilin_status(status: str | None) -> str:
+    kelas, teks = _STATUS_PETA.get(str(status or "").strip(), ("pill-neutral", status or "—"))
+    return _pillin(teks, kelas)
+
+
+def _pilin_minio(ada: bool) -> str:
+    if ada:
+        return _pillin("Ada", "pill-success")
+    return _pillin("Tidak", "pill-neutral")
 
 
 def _laman(pesan: str = "", galat: str = "") -> HTMLResponse:
@@ -66,129 +92,159 @@ def _laman(pesan: str = "", galat: str = "") -> HTMLResponse:
 
     def _baris(i: int, d: dict) -> str:
         doc_id = html.escape(str(d.get("document_id", "")))
-        title = html.escape(str(d.get("title", "")))
-        # `meta` dipertahankan di daftar (knowledge.py), tapi jenis/akses juga bisa
-        # ada di tingkat atas tergantung versi; fallback ke meta.
         meta_d = d.get("meta") or {}
+        title = html.escape(str(d.get("title") or doc_id))
         jenis = html.escape(str(d.get("jenis") or meta_d.get("jenis") or ""))
         akses = html.escape(str(d.get("tingkat_akses") or meta_d.get("tingkat_akses") or ""))
-        obj_key_d = d.get("object_key") or (f"{d.get('document_id', '')}.pdf" if d.get("document_id") else "") or ""
-        obj_key = html.escape(str(obj_key_d))
-        doc_id_val = html.escape(str(d.get("document_id", "")))
+        obj_key = html.escape(str(d.get("object_key") or f"{d.get('document_id', '')}.pdf"))
+        chunk = html.escape(str(d.get("chunk_qdrant", 0)))
         dminio = bool(d.get("di_minio"))
+        keterangan = html.escape(str(meta_d.get("keterangan") or ""))
+
         if dminio:
             tombol_preview = (
-                f"<form method='GET' action='/pengetahuan/preview' style='display:inline'>"
+                f"<form method='GET' action='/pengetahuan/preview' style='margin:0'>"
                 f"<input type='hidden' name='object_key' value='{obj_key}'>"
-                f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
-                f"<button class='btn-preview'>Preview</button></form> "
+                f"<input type='hidden' name='document_id' value='{doc_id}'>"
+                f"<button class='btn btn-ghost btn-sm' type='submit' title='Pratinjau PDF'>"
+                f"{IKON['eye']} Preview</button></form>"
             )
         else:
-            tombol_preview = ""
+            tombol_preview = (
+                f"<span class='btn btn-ghost btn-sm' title='PDF belum ada di MinIO' "
+                f"aria-disabled='true'>{IKON['eye']} Preview</span>"
+            )
+
+        akses_tampil = f"<span class='tag mono'>{akses}</span>" if akses else \
+            '<span class="tag">(kosong)</span>'
+
         return (
             f"<tr>"
-            f"<td class='no'>{i}</td>"
-            f"<td>{doc_id}</td>"
-            f"<td>{title}</td>"
-            f"<td>{jenis}</td>"
-            f"<td>{akses}</td>"
-            f"<td>{'<span class=ya>✓</span>' if dminio else '<span class=tidak>✗</span>'}</td>"
-            f"<td>{html.escape(str(d.get('chunk_qdrant', 0)))}</td>"
-            f"<td class='none' style='white-space:nowrap'>"
+            f"<td class='num'>{i}</td>"
+            f"<td><div class='doc-main'><span class='doc-title' title='{title}'>{title}</span>"
+            f"<span class='doc-id'>{doc_id}</span></div></td>"
+            f"<td>{jenis or '<span style=\"color:var(--faint)\">—</span>'}</td>"
+            f"<td>{akses_tampil}</td>"
+            f"<td>{_pilin_minio(dminio)}</td>"
+            f"<td class='num'>{chunk}</td>"
+            f"<td class='sel'>{keterangan or '<span style=\"color:var(--faint)\">—</span>'}</td>"
+            f"<td style='text-align:right;white-space:nowrap'>"
+            f"<div style='display:inline-flex;gap:6px'>"
             f"{tombol_preview}"
-            f"<form method='POST' action='/pengetahuan/status' style='display:inline'>"
-            f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
-            f"<button class='btn-status'>Status</button></form> "
-            f"<form method='POST' action='/pengetahuan/hapus' style='display:inline' "
+            f"<form method='POST' action='/pengetahuan/status' style='margin:0'>"
+            f"<input type='hidden' name='document_id' value='{doc_id}'>"
+            f"<button class='btn btn-ghost btn-sm' type='submit' title='Lihat status'>{IKON['pulse']} Status</button></form> "
+            f"<form method='POST' action='/pengetahuan/hapus' style='margin:0' "
             f"onsubmit=\"return confirm('Hapus dokumen ini?')\">"
-            f"<input type='hidden' name='document_id' value='{doc_id_val}'>"
-            f"<button class='btn-hapus'>Hapus</button></form></td></tr>"
+            f"<input type='hidden' name='document_id' value='{doc_id}'>"
+            f"<button class='btn btn-danger btn-sm' type='submit' title='Hapus dokumen'>{IKON['trash']} Hapus</button></form>"
+            f"</div></td></tr>"
         )
 
     tr_docs = "".join(_baris(i, d) for i, d in enumerate(docs, start=1)) or (
-        "<tr><td colspan='8' class='kosong'>Belum ada dokumen pengetahuan.</td></tr>"
+        '<tr><td colspan="8"><div class="empty">'
+        '<div class="judul">Belum ada dokumen</div>'
+        'Unggah PDF lewat form di bawah untuk memulai.</div></td></tr>'
     )
 
-    pesan_html = f"<p class='ok'>{html.escape(pesan)}</p>" if pesan else ""
-    galat_html = f"<p class='galat'>{html.escape(galat or galat_backend)}</p>" if (galat or galat_backend) else ""
+    galat_efektif = galat or galat_backend
 
-    return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pengetahuan TigaBe MCP</title><style>
-body{{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:24px}}
-.wrap{{max-width:960px;margin:0 auto}}
-h1{{font-size:1.3rem}} h2{{font-size:1.05rem;margin-top:28px}}
-table{{border-collapse:collapse;width:100%;background:#fff;border-radius:8px;overflow:hidden}}
-th,td{{text-align:left;padding:8px 10px;border-bottom:1px solid #e6e9ec;font-size:.86rem;vertical-align:top}}
-th{{background:#eef2f6}}
-.btn{{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600}}
-.btn-hapus{{background:#b3261e;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
-.btn-status{{background:#5f6b76;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
-.btn-preview{{background:#188038;color:#fff;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.78rem}}
-td.no{{text-align:center;color:#5f6b76;font-weight:600;white-space:nowrap}}
-.preview-frame{{width:100%;height:80vh;border:1px solid #cfd6dc;border-radius:8px;background:#fff}}
-input[type=file],select{{padding:8px;border:1px solid #cfd6dc;border-radius:6px;width:100%;box-sizing:border-box;font-family:inherit}}
-textarea{{padding:8px;border:1px solid #cfd6dc;border-radius:6px;width:100%;box-sizing:border-box;font-family:inherit}}
-form.baris{{background:#fff;border:1px solid #e6e9ec;border-radius:8px;padding:14px;margin-top:10px}}
-label.f{{display:block;font-size:.78rem;color:#3f4650;margin:8px 0 3px}}
-.ok{{color:#1b7f4d}} .galat{{color:#b3261e}} .kosong{{color:#8794a0}}
-.small{{font-size:.75rem;color:#8794a0}}
-.ya{{color:#1b7f4d;font-weight:600}} .tidak{{color:#b3261e;font-weight:600}}
-.tab{{display:inline-block;padding:6px 14px;border-radius:6px;background:#fff;border:1px solid #d9dee3;
-     color:#3f4650;text-decoration:none;font-size:.85rem;margin-right:6px}}
-.tab.aktif{{background:#1a73e8;color:#fff;border-color:#1a73e8;font-weight:600}}
-</style></head><body><div class="wrap">
-<h1>📚 Pengetahuan TigaBe MCP</h1>
-<p>
-  <a class="tab aktif" href="/pengetahuan">📚 Dokumen</a>
-  <a class="tab" href="/admin">🛠️ Admin</a>
-</p>
-<p class="small">Halaman ini hanya bisa dibuka dari komputer ini (localhost).</p>
-{pesan_html}{galat_html}
+    # ---- kartu dokumen ----
+    kartu_dokumen = (
+        '<section class="card"><div class="card-head"><div>'
+        f'<h2>{IKON["doc"]} Dokumen Pengetahuan</h2>'
+        '<div class="meta">PDF tersimpan di MinIO, vektor di Qdrant.</div></div>'
+        f'<span class="count">{len(docs)}</span></div>'
+        '<div class="card-body ketat"><div class="table-scroll"><table>'
+        '<thead><tr><th>No</th><th>Dokumen</th><th>Jenis</th><th>Akses</th>'
+        '<th>MinIO</th><th>Chunk</th><th>Keterangan</th><th></th></tr></thead>'
+        f'<tbody>{tr_docs}</tbody></table></div></div></section>'
+    )
 
-<h2>📄 Dokumen Pengetahuan</h2>
-<table><tr><th>No</th><th>ID</th><th>Judul</th><th>Jenis</th><th>Akses</th><th>MinIO</th><th>Chunk Qdrant</th><th>Aksi</th></tr>{tr_docs}</table>
+    # ---- form unggah ----
+    form_unggah = (
+        '<section class="card"><div class="card-head"><div>'
+        f'<h2>{IKON["upload"]} Unggah PDF</h2>'
+        '<div class="meta">Berkas diurai, dipotong (chunk), lalu di-embed ke Qdrant.</div></div></div>'
+        '<div class="card-body">'
+        "<form method='POST' action='/pengetahuan/unggah' enctype='multipart/form-data'>"
+        "<div class='field'><label for='f-berkas'>Berkas PDF <span class='wajib'>*</span></label>"
+        "<input type='file' id='f-berkas' name='berkas' accept='application/pdf,.pdf' required></div>"
+        "<div class='field'><label for='f-akses'>Tingkat akses</label>"
+        f"<select id='f-akses' name='tingkat_akses'>{_opsi_akses()}</select>"
+        "<p class='hint'>Nilai ini jadi filter <code>tingkat_akses</code> saat pencarian.</p></div>"
+        "<div class='field'><label for='f-ket'>Keterangan</label>"
+        "<textarea id='f-ket' name='keterangan' rows='2' placeholder='Opsional'></textarea></div>"
+        f"<button class='btn btn-primary' type='submit'>{IKON['upload']} Unggah PDF</button>"
+        "</form></div></section>"
+    )
 
-<h2>⬆️ Unggah PDF</h2>
-<form class="baris" method="POST" action="/pengetahuan/unggah" enctype="multipart/form-data">
-  <label class="f">Berkas PDF</label>
-  <input type="file" name="berkas" accept="application/pdf,.pdf" required>
-  <label class="f">Tingkat akses</label>
-  <select name="tingkat_akses">{_opsi_akses()}</select>
-  <label class="f">Keterangan</label>
-  <textarea name="keterangan" rows="2" placeholder="Opsional"></textarea>
-  <p><button class="btn">Unggah</button></p>
-</form>
+    isi = (
+        '<div class="grid-utama">'
+        '{kartu_dokumen}{form_unggah}</div>'
+    ).format(kartu_dokumen=kartu_dokumen, form_unggah=form_unggah)
 
-<p class="small">Dokumen disimpan di MinIO dan dipotong (chunk) &amp; di-embed ke Qdrant.</p>
-</div></body></html>""")
+    html_doc = wadah(
+        judul_halaman="Pengetahuan",
+        deskripsi="Kelola dokumen resmi: unggah, cek status, pratinjau, hapus.",
+        aktif="knowledge",
+        isi={"isi": isi, "pesan": pesan, "galat": galat_efektif},
+        judul="Pengetahuan TigaBe MCP",
+    )
+    return HTMLResponse(html_doc)
 
 
 def _laman_status(document_id: str, hasil: dict | None = None, galat: str = "") -> HTMLResponse:
     if hasil is not None:
-        detail = "<pre>" + html.escape(
-            "\n".join(f"{k}: {v}" for k, v in hasil.items())
-        ) + "</pre>"
+        d_minio = bool(hasil.get("di_minio"))
+        chunk = hasil.get("chunk_qdrant", 0)
+        status = _pilin_status(hasil.get("status"))
+        meta = hasil.get("meta") or {}
+        # urutan deterministik, meta internal dulu
+        kunci = ["title", "jenis", "tingkat_akses", "keterangan", "status",
+                 "tanggal_berlaku", "tanggal_habis", "document_id"]
+        kunci += [k for k in meta if k not in kunci]
+        rows = []
+        rows.append(("Status", status))
+        rows.append(("PDF di MinIO", _pilin_minio(d_minio)))
+        rows.append(("Chunk di Qdrant", chunk))
+        for k in kunci:
+            if k in meta and meta[k] not in (None, ""):
+                rows.append((k, html.escape(str(meta[k]))))
+        detail = hl = ""
+        for k, v in rows:
+            hl += f"<dt>{html.escape(k)}</dt><dd>{v}</dd>"
+        detail = f'<dl class="kv">{hl}</dl>'
     else:
         detail = ""
 
-    pesan_html = f"<p class='ok'>{html.escape(galat)}</p>" if galat else ""
-    return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Status Pengetahuan</title><style>
-body{{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:24px}}
-.wrap{{max-width:720px;margin:0 auto}}
-h1{{font-size:1.3rem}}
-.btn{{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block}}
-.galat{{color:#b3261e}} .small{{font-size:.75rem;color:#8794a0}}
-pre{{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #e6e9ec;padding:12px;border-radius:6px;font-size:.82rem}}
-</style></head><body><div class="wrap">
-<h1>🔍 Status Dokumen</h1>
-<p class="small">ID: {html.escape(document_id)}</p>
-{pesan_html}
-{detail}
-<p><a class="btn" href="/pengetahuan">← Kembali</a></p>
-</div></body></html>""")
+    galat_html = ""
+    if galat:
+        galat_html = ('<div class="alert galat">{ikon}<span>{teks}</span></div>').format(
+            ikon=IKON["galat"], teks=galat)
+
+    kembali = (
+        f"<a class='btn btn-ghost' href='/pengetahuan'>{IKON['back']} Kembali</a>"
+    )
+    body = (
+        '<section class="card"><div class="card-head"><div>'
+        f'<h2>{IKON["pulse"]} Status Dokumen</h2>'
+        f'<div class="meta">ID: <code>{html.escape(document_id)}</code></div></div></div>'
+        '<div class="card-body">{detail}</div></section>'
+    ).format(detail=detail or '<div class="empty"><div class="judul">Tidak ada data</div>'
+             'Dokumen tidak ditemukan di MinIO maupun Qdrant.</div>')
+
+    isi = '{galat_html}{body}{kembali}'.format(
+        galat_html=galat_html, body=body, kembali=kembali)
+
+    html_doc = wadah(
+        judul_halaman="Status Dokumen",
+        deskripsi="Keberadaan PDF dan vektor dari satu dokumen.",
+        aktif="knowledge",
+        isi={"isi": isi, "pesan": "", "galat": ""},
+        judul="Status Pengetahuan",
+    )
+    return HTMLResponse(html_doc)
 
 
 def _laman_preview(object_key: str, document_id: str, galat: str = "") -> HTMLResponse:
@@ -200,24 +256,32 @@ def _laman_preview(object_key: str, document_id: str, galat: str = "") -> HTMLRe
         url = ""
         galat_js = html.escape(f"Gagal membuat tautan preview ({type(e).__name__}).")
 
-    pesan_html = f"<p class='galat'>{galat_js}</p>" if galat_js else ""
-    judul = html.escape(document_id)
-    return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Preview {judul}</title><style>
-body{{font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:24px}}
-.wrap{{max-width:1000px;margin:0 auto}}
-h1{{font-size:1.2rem}}
-.btn{{background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block;margin-bottom:12px}}
-.galat{{color:#b3261e}} .small{{font-size:.75rem;color:#8794a0}}
-.preview-frame{{width:100%;height:82vh;border:1px solid #cfd6dc;border-radius:8px;background:#fff}}
-</style></head><body><div class="wrap">
-<h1>📄 Preview {judul}</h1>
-<p class="small">Tautan PDF berlaku 30 menit (presigned MinIO).</p>
-{pesan_html}
-<p><a class="btn" href="/pengetahuan">← Kembali</a></p>
-{"<iframe class='preview-frame' src='" + html.escape(url) + "' title='Preview PDF'></iframe>" if url else ""}
-</div></body></html>""")
+    galat_html = ""
+    if galat_js:
+        galat_html = ('<div class="alert galat">{ikon}<span>{teks}</span></div>').format(
+            ikon=IKON["galat"], teks=galat_js)
+
+    frame = ("<iframe class='frame' src='" + html.escape(url) +
+             "' title='Preview PDF' loading='lazy'></iframe>") if url else ""
+
+    kembali = (
+        f"<a class='btn btn-ghost' href='/pengetahuan'>{IKON['back']} Kembali</a>"
+    )
+    body = (
+        '<div class="catatan" style="margin-top:0;margin-bottom:14px">'
+        'Pratinjau memakai tautan presigned MinIO (berlaku 30 menit).</div>'
+        '{galat_html}{frame}'
+    ).format(galat_html=galat_html, frame=frame)
+
+    html_doc = wadah(
+        judul_halaman=f"Preview {html.escape(document_id)}",
+        deskripsi="Pratinjau dokumen PDF dari MinIO.",
+        aktif="knowledge",
+        isi={"isi": body, "pesan": "", "galat": ""},
+        judul=f"Preview {html.escape(document_id)}",
+        aksi=kembali,
+    )
+    return HTMLResponse(html_doc)
 
 
 def pasang_pengetahuan(mcp) -> None:
@@ -248,15 +312,19 @@ def pasang_pengetahuan(mcp) -> None:
             log.exception("unggah_pdf gagal")
             return _laman(galat=f"Unggah gagal: {type(e).__name__}: {str(e)[:200]}")
         status = hasil.get("status")
+        pesan = None
+        galat = None
         if status == "lengkap":
             pesan = f"Dokumen ditambahkan: {hasil.get('document_id')} ({hasil.get('chunk_qdrant')} chunk)."
         elif status == "minio":
-            return _laman(galat=f"PDF tersimpan di MinIO tapi GAGAL di-indeks ke Qdrant ({hasil.get('document_id')}). Dokumen belum bisa dicari/daftar.")
+            galat = f"PDF tersimpan di MinIO tapi GAGAL di-indeks ke Qdrant ({hasil.get('document_id')}). Dokumen belum bisa dicari/daftar."
         elif status == "qdrant":
-            return _laman(galat=f"Tervermda di Qdrant tapi PDF belum tersimpan di MinIO ({hasil.get('document_id')}).")
+            galat = f"Tervermda di Qdrant tapi PDF belum tersimpan di MinIO ({hasil.get('document_id')})."
         else:
-            return _laman(galat=f"Unggah gagal (status={status}) untuk {hasil.get('document_id')}.")
-        return RedirectResponse(f"/pengetahuan?pesan={quote(pesan)}", status_code=303)
+            galat = f"Unggah gagal (status={status}) untuk {hasil.get('document_id')}."
+        if pesan:
+            return RedirectResponse(f"/pengetahuan?pesan={quote(pesan)}", status_code=303)
+        return _laman(galat=galat or "Unggah gagal tanpa keterangan.")
 
     @mcp.custom_route("/pengetahuan/hapus", methods=["POST"])
     async def hapus_pdf_route(request: Request):

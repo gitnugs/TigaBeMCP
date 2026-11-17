@@ -27,7 +27,17 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def _lokal(request: Request) -> bool:
     host = (request.client.host if request.client else "") or ""
-    return host in ("127.0.0.1", "::1", "localhost")
+    if host in ("127.0.0.1", "::1", "localhost"):
+        return True
+    # akses via domain/reverse proxy: izinkan host yang ada di allowed hosts
+    try:
+        from auth import host_diizinkan
+        req_host = request.headers.get("host", "").split(":")[0]
+        if req_host and req_host in [h.split(":")[0] for h in host_diizinkan()]:
+            return True
+    except Exception:
+        pass
+    return False
 
 def _laman(pesan: str = "") -> HTMLResponse:
     isi = (

@@ -2,7 +2,7 @@
 
 Rute:
   /chat            -> antarmuka chat (tanya dokumen) + tombol push/deploy
-  /chat/ask        (POST) -> tanya (pakai cari_dokumen), balasan teks
+  /chat/ask        (POST) -> tanya (pakai cari_dokumen), balasan teks + sitasi
   /chat/push       (POST) -> git add/commit/push
   /chat/deploy     (POST) -> trigger workflow_dispatch GitHub Actions
 
@@ -25,11 +25,16 @@ from auth import akses_efektif, PERAN
 
 BASE_DIR = Path(__file__).resolve().parent
 
+_PERAN_OPSI = "".join(
+    f'<option value="{html.escape(n)}">{html.escape(p.label)}</option>'
+    for n, p in PERAN.items()
+)
+
+
 def _lokal(request: Request) -> bool:
     host = (request.client.host if request.client else "") or ""
     if host in ("127.0.0.1", "::1", "localhost"):
         return True
-    # akses via domain/reverse proxy: izinkan host yang ada di allowed hosts
     try:
         from auth import host_diizinkan
         req_host = request.headers.get("host", "").split(":")[0]
@@ -39,46 +44,284 @@ def _lokal(request: Request) -> bool:
         pass
     return False
 
+
 def _laman(pesan: str = "") -> HTMLResponse:
-    isi = (
-        '<div class="card"><div class="card-h"><h3>Chat Agent</h3></div>'
-        '<div class="card-b">'
-        '<div id="log" style="height:420px;overflow:auto;border:1px solid var(--border);'
-        'border-radius:12px;padding:16px;margin-bottom:12px;background:var(--surface-2);'
-        'display:flex;flex-direction:column;gap:10px"></div>'
-        '<div style="display:flex;gap:8px;align-items:center">'
-        '<input id="q" style="flex:1;padding:10px 14px;border-radius:20px;border:1px solid var(--border)" '
-        'placeholder="Tanya soal dokumen sekolah..."/>'
-        '<button class="btn primary" style="border-radius:20px;padding:10px 18px" onclick="kirim()">Kirim</button>'
-        '</div>'
-        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'
-        '<button class="btn" onclick="push()">Push ke GitHub</button>'
-        '<button class="btn" onclick="deploy()">Jalankan Pipeline Deploy</button>'
-        '</div>'
-        '<pre id="status" style="margin-top:10px"></pre>'
-        '</div></div>'
-        '<script>'
-        'function bubble(text, who){const d=document.createElement("div");'
-        'd.style.maxWidth="78%";d.style.padding="10px 14px";d.style.borderRadius="14px";'
-        'd.style.whiteSpace="pre-wrap";d.style.wordBreak="break-word";'
-        'if(who==="user"){d.style.alignSelf="flex-end";d.style.background="var(--accent)";d.style.color="#fff";}'
-        'else{d.style.alignSelf="flex-start";d.style.background="var(--surface)";d.style.border="1px solid var(--border)";}'
-        'd.textContent=text;document.getElementById("log").appendChild(d);'
-        'document.getElementById("log").scrollTop=999999;}'
-        'async function kirim(){const q=document.getElementById("q").value.trim();'
-        'if(!q)return;bubble(q,"user");'
-        'const r=await fetch("/chat/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q})});'
-        'const d=await r.json();bubble(d.reply||d.error||"","agent");'
-        'document.getElementById("q").value="";}'
-        'async function push(){const r=await fetch("/chat/push",{method:"POST"});const d=await r.json();'
-        'document.getElementById("status").textContent=JSON.stringify(d,null,2);}'
-        'async function deploy(){const r=await fetch("/chat/deploy",{method:"POST"});const d=await r.json();'
-        'document.getElementById("status").textContent=JSON.stringify(d,null,2);}'
-        '</script>'
-    )
+    isi = r'''
+<style>
+/* ---- Chat shell (ChatGPT/WorkBuddy style) ---- */
+.chat-shell{display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:520px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.chat-top{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);flex-wrap:wrap}
+.chat-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:.95rem}
+.chat-title svg{width:18px;height:18px;color:var(--accent)}
+.chat-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chat-controls select,.chat-controls button{font:inherit;font-size:.82rem;padding:6px 10px;
+  border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer}
+.chat-controls select{min-width:150px}
+.chat-controls button:hover{background:var(--surface-2)}
+.chat-controls .danger{border-color:var(--danger-border);color:var(--danger)}
+.chat-messages{flex:1;overflow:auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px;
+  scroll-behavior:smooth}
+.empty-state{text-align:center;color:var(--muted);margin:auto;padding:40px 20px;max-width:420px}
+.empty-state h3{color:var(--ink);margin:0 0 6px;font-size:1.05rem}
+.empty-state p{margin:0;font-size:.85rem}
+.msg{display:flex;gap:10px;max-width:100%}
+.msg.user{justify-content:flex-end}
+.avatar{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;
+  justify-content:center;font-size:.75rem;font-weight:700;color:#fff}
+.avatar.user{background:var(--accent)}
+.avatar.agent{background:linear-gradient(135deg,#2B8CE8,#5AB0F5)}
+.bubble{max-width:min(78%,720px);padding:12px 16px;border-radius:16px;font-size:.92rem;
+  line-height:1.55;word-break:break-word}
+.bubble.user{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.bubble.agent{background:var(--surface-2);border:1px solid var(--border);border-bottom-left-radius:4px}
+.bubble.agent p{margin:0 0 8px}.bubble.agent p:last-child{margin:0}
+.bubble.agent ul,.bubble.agent ol{margin:6px 0 8px 18px;padding:0}
+.bubble.agent li{margin:2px 0}
+.bubble.agent code{background:rgba(0,0,0,.35);padding:1px 5px;border-radius:4px;font-size:.85em}
+.bubble.agent pre{background:#0e0f11;border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;overflow:auto;margin:8px 0;font-size:.82rem}
+.bubble.agent pre code{background:none;padding:0}
+.bubble.agent a{color:var(--accent-hover)}
+.citations{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.cite{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;font-size:.82rem}
+.cite-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.cite-title{font-weight:600;color:var(--ink)}
+.cite-badge{font-size:.7rem;padding:2px 7px;border-radius:999px;border:1px solid var(--border);
+  color:var(--muted)}
+.cite-badge.ok{color:#58C98A;border-color:var(--success-border);background:var(--success-soft)}
+.cite-badge.warn{color:#F1B33C;border-color:var(--amber-border);background:var(--amber-soft)}
+.cite-snippet{color:var(--ink-2);margin:4px 0 6px;white-space:pre-wrap}
+.cite-link{color:var(--accent);text-decoration:none;font-weight:500}
+.cite-link:hover{text-decoration:underline}
+.cite-meta{color:var(--muted);font-size:.72rem;margin-top:4px}
+.typing{display:flex;gap:4px;padding:4px 0 4px 40px}
+.typing span{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:bounce 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-6px);opacity:1}}
+.chat-input{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);
+  background:var(--surface-2);align-items:flex-end}
+.chat-input textarea{flex:1;resize:none;min-height:42px;max-height:160px;padding:10px 14px;
+  border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--ink);
+  font:inherit;font-size:.92rem;line-height:1.4}
+.chat-input textarea:focus{outline:none;border-color:var(--accent)}
+.chat-input button{padding:10px 16px;border-radius:12px;border:none;background:var(--accent);
+  color:#fff;font-weight:600;cursor:pointer;font-size:.9rem}
+.chat-input button:disabled{opacity:.5;cursor:not-allowed}
+.chat-input button:hover:not(:disabled){background:var(--accent-hover)}
+.status-line{margin:6px 16px 0;font-family:ui-monospace,monospace;font-size:.75rem;
+  color:var(--muted);white-space:pre-wrap;max-height:120px;overflow:auto}
+@media (max-width:720px){.chat-shell{height:calc(100vh - 120px)}.bubble{max-width:92%}}
+</style>
+
+<div class="chat-shell">
+  <div class="chat-top">
+    <div class="chat-title">__CHAT_ICON__ Chat TigaBe</div>
+    <div class="chat-controls">
+      <label style="font-size:.78rem;color:var(--muted)">Peran:</label>
+      <select id="role">__PERAN_OPTS__</select>
+      <button id="btn-clear" type="button">Hapus chat</button>
+      <button id="btn-push" type="button">Push GitHub</button>
+      <button id="btn-deploy" type="button">Deploy</button>
+    </div>
+  </div>
+  <div class="chat-messages" id="log">
+    <div class="empty-state" id="empty">
+      <h3>Mulai percakapan</h3>
+      <p>Tanyakan soal dokumen sekolah, mis. "seragam kelas 4 hari Rabu pakai apa?".
+      Pilih peran di atas untuk menyesuaikan akses dokumen.</p>
+    </div>
+  </div>
+  <div class="typing" id="typing" hidden><span></span><span></span><span></span></div>
+  <div class="chat-input">
+    <textarea id="q" rows="1" placeholder="Ketik pertanyaan... (Enter kirim, Shift+Enter baris baru)"></textarea>
+    <button id="send" type="button">Kirim</button>
+  </div>
+  <pre class="status-line" id="status"></pre>
+</div>
+
+<script>
+(function(){
+  const log = document.getElementById('log');
+  const empty = document.getElementById('empty');
+  const q = document.getElementById('q');
+  const sendBtn = document.getElementById('send');
+  const typing = document.getElementById('typing');
+  const status = document.getElementById('status');
+  const roleSel = document.getElementById('role');
+
+  // restore role
+  const savedRole = localStorage.getItem('tigabe.chat.role');
+  if (savedRole) roleSel.value = savedRole;
+  roleSel.addEventListener('change', ()=>localStorage.setItem('tigabe.chat.role', roleSel.value));
+
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function md(text){
+    // code blocks
+    let out = esc(text);
+    out = out.replace(/```([\s\S]*?)```/g, function(_,c){return '<pre><code>'+c.trim()+'</code></pre>';});
+    // inline code
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // bold
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // italic
+    out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+    // links
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // headings-ish lines
+    // bullets
+    out = out.replace(/(?:^|\n)([-*] .+(?:\n[-*] .+)*)/g, function(m){
+      const items = m.trim().split(/\n/).map(l=>'<li>'+l.replace(/^[-*] /,'')+'</li>').join('');
+      return '\n<ul>'+items+'</ul>';
+    });
+    // newlines
+    out = out.replace(/\n/g, '<br>');
+    return out;
+  }
+
+  function hideEmpty(){ if (empty) empty.style.display = 'none'; }
+
+  function addMsg(who, content, citations){
+    hideEmpty();
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + who;
+    const av = document.createElement('div');
+    av.className = 'avatar ' + who;
+    av.textContent = who === 'user' ? 'K' : 'AI';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble ' + who;
+    if (who === 'user') {
+      bubble.textContent = content;
+    } else {
+      bubble.innerHTML = md(content || '');
+      if (citations && citations.length) {
+        const c = document.createElement('div');
+        c.className = 'citations';
+        citations.forEach(function(x){
+          const card = document.createElement('div');
+          card.className = 'cite';
+          const badgeCls = x.status_waktu === 'berlaku' ? 'ok' : 'warn';
+          card.innerHTML =
+            '<div class="cite-head"><span class="cite-title">'+esc(x.title||'-')+'</span>'+
+            '<span class="cite-badge '+badgeCls+'">'+esc(x.status_waktu||'-')+'</span></div>'+
+            '<div class="cite-snippet">'+esc((x.kutipan||'').slice(0,320))+'</div>'+
+            '<a class="cite-link" href="'+esc(x.document_url||'#')+'" target="_blank" rel="noopener">Buka PDF asli ↗</a>'+
+            '<div class="cite-meta">skor '+esc(x.skor)+' · halaman '+esc(x.halaman)+
+            (x.pasal?' · '+esc(x.pasal):'')+'</div>';
+          c.appendChild(card);
+        });
+        bubble.appendChild(c);
+      }
+    }
+    if (who === 'user') { wrap.appendChild(bubble); wrap.appendChild(av); }
+    else { wrap.appendChild(av); wrap.appendChild(bubble); }
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async function kirim(){
+    const text = q.value.trim();
+    if (!text) return;
+    addMsg('user', text);
+    q.value = ''; autoResize();
+    sendBtn.disabled = true;
+    typing.hidden = false; log.scrollTop = log.scrollHeight;
+    try {
+      const r = await fetch('/chat/ask', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({q: text, role: roleSel.value, top_k: 5})
+      });
+      const d = await r.json();
+      typing.hidden = true;
+      if (d.error) { addMsg('agent', 'Error: ' + d.error); }
+      else {
+        const reply = d.reply || (d.status === 'ok' ? 'Selesai.' : 'Tidak ada hasil.');
+        addMsg('agent', reply, d.hasil || []);
+        if (d.status && d.status !== 'ok') {
+          status.textContent = (d.pesan || d.status);
+        } else {
+          status.textContent = '';
+        }
+      }
+    } catch (e) {
+      typing.hidden = true;
+      addMsg('agent', 'Gagal menghubungi server: ' + e);
+    } finally {
+      sendBtn.disabled = false;
+      q.focus();
+    }
+  }
+
+  function autoResize(){
+    q.style.height = 'auto';
+    q.style.height = Math.min(q.scrollHeight, 160) + 'px';
+  }
+  q.addEventListener('input', autoResize);
+  q.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); kirim(); }
+  });
+  sendBtn.addEventListener('click', kirim);
+
+  document.getElementById('btn-clear').addEventListener('click', function(){
+    log.innerHTML = '';
+    const e2 = document.createElement('div');
+    e2.className = 'empty-state'; e2.id = 'empty';
+    e2.innerHTML = '<h3>Mulai percakapan</h3><p>Tanyakan soal dokumen sekolah.</p>';
+    log.appendChild(e2);
+    status.textContent = '';
+  });
+  document.getElementById('btn-push').addEventListener('click', async function(){
+    status.textContent = 'Pushing...';
+    try {
+      const r = await fetch('/chat/push', {method:'POST'});
+      const d = await r.json();
+      status.textContent = JSON.stringify(d, null, 2);
+    } catch(e){ status.textContent = 'Error: ' + e; }
+  });
+  document.getElementById('btn-deploy').addEventListener('click', async function(){
+    status.textContent = 'Trigger deploy...';
+    try {
+      const r = await fetch('/chat/deploy', {method:'POST'});
+      const d = await r.json();
+      status.textContent = JSON.stringify(d, null, 2);
+    } catch(e){ status.textContent = 'Error: ' + e; }
+  });
+
+  // restore history (ringan) dari localStorage
+  try {
+    const hist = JSON.parse(localStorage.getItem('tigabe.chat.hist') || '[]');
+    if (hist.length) { empty.style.display='none'; hist.forEach(m=>addMsg(m.who, m.content, m.cit||[])); }
+  } catch(e){}
+  // simpan history sederhana
+  const origAdd = addMsg;
+  // wrap addMsg untuk persist
+  // (sederhana: simpan teks terakhir 40 pesan)
+  const _addMsg = addMsg;
+  // override tidak perlu; persist manual setelah kirim selesai via observer tidak trivial.
+  // Simpan saat sebelum unload
+  window.addEventListener('beforeunload', function(){
+    const msgs = [];
+    document.querySelectorAll('.msg').forEach(function(m){
+      const who = m.classList.contains('user')?'user':'agent';
+      const b = m.querySelector('.bubble');
+      const txt = b ? b.textContent.slice(0,500) : '';
+      msgs.push({who:who, content:txt});
+    });
+    localStorage.setItem('tigabe.chat.hist', JSON.stringify(msgs.slice(-40)));
+  });
+})();
+</script>
+'''
+
+    isi = isi.replace("__CHAT_ICON__", IKON["chat"]).replace("__PERAN_OPTS__", _PERAN_OPSI)
+
     html_doc = wadah("Chat", "Komunikasi dengan agent + aksi deploy.", "chat",
                      {"isi": isi, "pesan": pesan, "galat": ""}, "Chat TigaBe", "")
     return HTMLResponse(html_doc)
+
 
 def pasang_chat(mcp) -> None:
     @mcp.custom_route("/chat", methods=["GET"])
@@ -95,16 +338,49 @@ def pasang_chat(mcp) -> None:
         q = str(data.get("q", "")).strip()
         if not q:
             return JSONResponse({"error": "query kosong"})
+        role = str(data.get("role", "publik")).strip()
         try:
-            res = cari(q, 5, None, akses=["public"])
-            hasil = res.get("hasil", [])
-            if not hasil:
-                reply = "Tidak ditemukan dokumen relevan."
-            else:
-                reply = "\n".join(f"- {h.get('judul','-')}: {h.get('kutipan','-')[:200]}" for h in hasil)
+            top_k = int(data.get("top_k", 5))
+        except (TypeError, ValueError):
+            top_k = 5
+        top_k = max(1, min(top_k, 10))
+
+        peran = PERAN.get(role) or PERAN.get("publik")
+        if peran is None:
+            peran = list(PERAN.values())[0]
+        akses = akses_efektif(peran)
+
+        try:
+            res = cari(q, top_k, None, akses=akses)
         except Exception as e:
-            reply = f"Error: {type(e).__name__}"
-        return JSONResponse({"reply": reply})
+            return JSONResponse({"status": "error", "error": f"{type(e).__name__}: {e}"}, status_code=500)
+
+        status = res.get("status", "ok")
+        hasil = res.get("hasil", []) or []
+        if status != "ok":
+            return JSONResponse({
+                "status": status,
+                "pesan": res.get("pesan", ""),
+                "reply": res.get("pesan", "Layanan tidak tersedia."),
+                "hasil": [],
+            })
+
+        if not hasil:
+            reply = "Tidak ditemukan dokumen relevan untuk pertanyaan ini."
+        else:
+            lines = []
+            for h in hasil[:3]:
+                kut = (h.get("kutipan") or "").strip().replace("\n", " ")
+                lines.append(f"- {h.get('title','-')}: {kut[:180]}")
+            reply = ("Ditemukan " + str(len(hasil)) + " kutipan relevan. "
+                     "Ringkasan:\n" + "\n".join(lines))
+        return JSONResponse({
+            "status": "ok",
+            "reply": reply,
+            "hasil": hasil,
+            "jumlah": len(hasil),
+            "tanggal_acuan": res.get("tanggal_acuan"),
+        })
 
     @mcp.custom_route("/chat/push", methods=["POST"])
     async def chat_push(request: Request):
@@ -122,19 +398,22 @@ def pasang_chat(mcp) -> None:
     async def chat_deploy(request: Request):
         if not _lokal(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)
-        token = os.environ.get("GITHUB_TOKEN", "")
-        repo = os.environ.get("GITHUB_REPO", "")
-        if not token or not repo:
-            return JSONResponse({"error": "GITHUB_TOKEN/GITHUB_REPO belum diset"}, status_code=400)
-        import urllib.request
-        url = f"https://api.github.com/repos/{repo}/actions/workflows/ci.yml/dispatches"
-        req = urllib.request.Request(url, data=json.dumps({"ref": "main"}).encode(), headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/json",
-        }, method="POST")
         try:
+            import urllib.request
+            token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+            repo = os.environ.get("GITHUB_REPOSITORY", "")
+            if not token or not repo:
+                return JSONResponse({"status": "error", "error": "GITHUB_TOKEN/GITHUB_REPOSITORY belum di-set"}, status_code=400)
+            url = f"https://api.github.com/repos/{repo}/actions/workflows/ci.yml/dispatches"
+            req = urllib.request.Request(url, data=json.dumps({"ref": "main"}).encode(),
+                                       headers={"Authorization": f"Bearer {token}",
+                                                "Accept": "application/vnd.github+json",
+                                                "X-GitHub-Api-Version": "2022-11-28"})
             with urllib.request.urlopen(req) as resp:
-                return JSONResponse({"status": "triggered", "http": resp.status})
+                return JSONResponse({"status": "ok", "http": resp.status})
         except Exception as e:
             return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
+
+
+if __name__ == "__main__":
+    pass

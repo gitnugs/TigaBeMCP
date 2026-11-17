@@ -236,6 +236,9 @@ pasang_admin(mcp)
 from pengetahuan_ui import pasang_pengetahuan   # noqa: E402
 pasang_pengetahuan(mcp)
 
+from chat_page import pasang_chat   # noqa: E402
+pasang_chat(mcp)
+
 
 def jalankan() -> None:
     """Bangun app HTTP (dengan SessionMiddleware) dan jalankan uvicorn."""

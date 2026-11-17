@@ -60,6 +60,7 @@ IKON = {
         '<path d="M11.5 2.75v3h3"/>',
     ),
     "back": svg('<path d="M10 4.25L4.25 10 10 15.75"/><path d="M4.25 10h11.5"/>'),
+    "chat": svg('<path d="M3 5.5h14v9H8.5L4 18v-3.5H3z"/><path d="M6.5 9h7M6.5 11.5h4.5"/>'),
 }
 
 LOGO = (
@@ -331,6 +332,8 @@ input[type=file]::file-selector-button:hover{border-color:var(--accent);color:va
 def nav(aktif: str) -> str:
     item = '<a class="nav-item {aktif}" href="{href}">{ikon}<span>{teks}</span></a>'
     return "".join([
+        item.format(aktif="active" if aktif == "chat" else "", href="/chat",
+                    ikon=IKON["chat"], teks="Chat"),
         item.format(aktif="active" if aktif == "user" else "", href="/admin",
                     ikon=IKON["users"], teks="Pengguna &amp; Peran"),
         item.format(aktif="active" if aktif == "audit" else "", href="/admin/audit",
@@ -378,3 +381,4 @@ def wadah(judul_halaman: str, deskripsi: str, aktif: str, isi: dict,
         "<div class='content'>{pesan}{galat}{konten}</div></main></div></body></html>"
     ).format(judul=judul, css=CSS, sidebar=sidebar, topbar=topbar,
              pesan=pesan, galat=galat, konten=isi["isi"])
+CHAT_ICON = svg('<path d="M3 5.5h14v9H8.5L4 18v-3.5H3z"/><path d="M6.5 9h7M6.5 11.5h4.5"/>')

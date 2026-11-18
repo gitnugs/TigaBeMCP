@@ -473,17 +473,21 @@ def pasang_chat(mcp) -> None:
         if not hasil:
             reply = "Tidak ditemukan dokumen relevan untuk pertanyaan ini."
         else:
-            reply = f"Ditemukan **{len(hasil)}** kutipan relevan.\n\n"
-            reply += "| # | Dokumen | Pasal/Bagian | Hal | Status |\n"
-            reply += "|---|---------|--------------|-----|--------|\n"
-            for i, h in enumerate(hasil[:5], 1):
-                title = (h.get("title") or "-").replace("|", " ")
-                pasal = (h.get("pasal") or h.get("bagian") or "-").replace("|", " ")
-                hal = str(h.get("halaman") or "-")
-                status_w = h.get("status_waktu") or "-"
-                reply += f"| {i} | {title} | {pasal} | {hal} | {status_w} |\n"
-            if len(hasil) > 5:
-                reply += f"\n_Lihat tabel sitasi di bawah untuk {len(hasil)-5} hasil lainnya._"
+            # Jawaban spesifik dari kutipan teratas
+            top = hasil[0]
+            kutipan = (top.get("kutipan") or "").strip()
+            title = top.get("title") or "-"
+            pasal = top.get("pasal") or top.get("bagian") or "-"
+            hal = top.get("halaman")
+            src_parts = [f"**Sumber:** {title}"]
+            if pasal and pasal != "-":
+                src_parts.append(f"Pasal/Bagian: {pasal}")
+            if hal:
+                src_parts.append(f"Hal {hal}")
+            if kutipan:
+                reply = f"{kutipan}\n\n" + " · ".join(src_parts)
+            else:
+                reply = f"Ditemukan dokumen relevan: {title} (Hal {hal or '-'}).\n\n" + " · ".join(src_parts)
         return JSONResponse({
             "status": "ok",
             "reply": reply,
@@ -498,9 +502,15 @@ def pasang_chat(mcp) -> None:
             return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             subprocess.run(["git", "add", "-A"], cwd=BASE_DIR, check=True, capture_output=True, text=True)
-            subprocess.run(["git", "commit", "-m", "chat: update"], cwd=BASE_DIR, check=True, capture_output=True, text=True)
-            r = subprocess.run(["git", "push", "origin", "main"], cwd=BASE_DIR, check=True, capture_output=True, text=True)
-            return JSONResponse({"status": "ok", "output": r.stdout + r.stderr})
+            # commit may fail if nothing to commit
+            cp = subprocess.run(["git", "commit", "-m", "chat: update UI and answer"], cwd=BASE_DIR, capture_output=True, text=True)
+            if cp.returncode != 0 and "nothing to commit" not in (cp.stdout + cp.stderr):
+                return JSONResponse({"status": "error", "stdout": cp.stdout, "stderr": cp.stderr}, status_code=500)
+            # push to github remote if exists, else origin
+            remotes = subprocess.run(["git", "remote"], cwd=BASE_DIR, capture_output=True, text=True)
+            rname = "github" if "github" in remotes.stdout.split() else "origin"
+            r = subprocess.run(["git", "push", rname, "main"], cwd=BASE_DIR, check=True, capture_output=True, text=True)
+            return JSONResponse({"status": "ok", "remote": rname, "output": (cp.stdout + cp.stderr + r.stdout + r.stderr).strip()})
         except subprocess.CalledProcessError as e:
             return JSONResponse({"status": "error", "stdout": e.stdout, "stderr": e.stderr}, status_code=500)
 

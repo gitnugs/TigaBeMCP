@@ -85,19 +85,20 @@ def _laman(pesan: str = "") -> HTMLResponse:
   padding:10px 12px;overflow:auto;margin:8px 0;font-size:.82rem}
 .bubble.agent pre code{background:none;padding:0}
 .bubble.agent a{color:var(--accent-hover)}
-.citations{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.cite{background:var(--surface);border:1px solid var(--border);border-radius:10px;
-  padding:10px 12px;font-size:.82rem}
-.cite-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.cite-title{font-weight:600;color:var(--ink)}
+.citations{margin-top:10px;overflow-x:auto}
+.cite-table,.md-table{width:100%;border-collapse:collapse;font-size:.78rem;min-width:320px}
+.cite-table th,.cite-table td,.md-table th,.md-table td{border:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}
+.cite-table th,.md-table th{background:var(--surface);color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.cite-table tr:nth-child(even) td,.md-table tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+.bubble.agent .md-table{margin:8px 0}
+.bubble.agent .md-table th{color:var(--ink-2)}
 .cite-badge{font-size:.7rem;padding:2px 7px;border-radius:999px;border:1px solid var(--border);
-  color:var(--muted)}
+  color:var(--muted);white-space:nowrap;display:inline-block}
 .cite-badge.ok{color:#58C98A;border-color:var(--success-border);background:var(--success-soft)}
 .cite-badge.warn{color:#F1B33C;border-color:var(--amber-border);background:var(--amber-soft)}
-.cite-snippet{color:var(--ink-2);margin:4px 0 6px;white-space:pre-wrap}
 .cite-link{color:var(--accent);text-decoration:none;font-weight:500}
 .cite-link:hover{text-decoration:underline}
-.cite-meta{color:var(--muted);font-size:.72rem;margin-top:4px}
+.cite-snippet{color:var(--ink-2);font-size:.75rem;margin-top:3px;max-width:320px;white-space:pre-wrap}
 .typing{display:flex;gap:4px;padding:4px 0 4px 40px}
 .typing span{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:bounce 1.2s infinite}
 .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
@@ -172,12 +173,32 @@ def _laman(pesan: str = "") -> HTMLResponse:
     // links
     out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     // headings-ish lines
+    // markdown tables: header row + separator row + body rows
+    out = out.replace(/(?:^|\n)((?:\|[^\n]*\|\n){2,}(?:\|[^\n]*\|\n?)?)/g, function(block){
+      const rows = block.trim().split(/\n/).filter(function(r){return r.trim();});
+      if (rows.length < 2) return block;
+      const sep = rows[1];
+      if (!/^\|[\s:|-]+\|$/.test(sep.trim())) return block;
+      function cells(r){ return r.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(function(c){return c.trim();}); }
+      const head = cells(rows[0]);
+      let html = '<table class="md-table"><thead><tr>';
+      head.forEach(function(c){ html += '<th>'+c+'</th>'; });
+      html += '</tr></thead><tbody>';
+      for (let i=2;i<rows.length;i++){
+        const cs = cells(rows[i]);
+        html += '<tr>';
+        cs.forEach(function(c){ html += '<td>'+c+'</td>'; });
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      return '\n'+html+'\n';
+    });
     // bullets
     out = out.replace(/(?:^|\n)([-*] .+(?:\n[-*] .+)*)/g, function(m){
       const items = m.trim().split(/\n/).map(l=>'<li>'+l.replace(/^[-*] /,'')+'</li>').join('');
       return '\n<ul>'+items+'</ul>';
     });
-    // newlines
+    // newlines (skip inside table already converted; remaining)
     out = out.replace(/\n/g, '<br>');
     return out;
   }
@@ -200,19 +221,24 @@ def _laman(pesan: str = "") -> HTMLResponse:
       if (citations && citations.length) {
         const c = document.createElement('div');
         c.className = 'citations';
-        citations.forEach(function(x){
-          const card = document.createElement('div');
-          card.className = 'cite';
+        let rows = '';
+        citations.forEach(function(x, i){
           const badgeCls = x.status_waktu === 'berlaku' ? 'ok' : 'warn';
-          card.innerHTML =
-            '<div class="cite-head"><span class="cite-title">'+esc(x.title||'-')+'</span>'+
-            '<span class="cite-badge '+badgeCls+'">'+esc(x.status_waktu||'-')+'</span></div>'+
-            '<div class="cite-snippet">'+esc((x.kutipan||'').slice(0,320))+'</div>'+
-            '<a class="cite-link" href="'+esc(x.document_url||'#')+'" target="_blank" rel="noopener">Buka PDF asli ↗</a>'+
-            '<div class="cite-meta">skor '+esc(x.skor)+' · halaman '+esc(x.halaman)+
-            (x.pasal?' · '+esc(x.pasal):'')+'</div>';
-          c.appendChild(card);
+          const snippet = (x.kutipan || '').replace(/\s+/g, ' ').slice(0, 160);
+          rows += '<tr>'
+            + '<td style="white-space:nowrap;color:var(--muted)">' + (i+1) + '</td>'
+            + '<td><div style="font-weight:600">' + esc(x.title || '-') + '</div>'
+            +   '<div class="cite-snippet">' + esc(snippet) + (snippet.length>=160?'…':'') + '</div></td>'
+            + '<td>' + (x.pasal ? esc(x.pasal) : '-') + '</td>'
+            + '<td style="white-space:nowrap">Hal. ' + esc(String(x.halaman || '-')) + '</td>'
+            + '<td style="white-space:nowrap">' + esc(String(x.skor ?? '-')) + '</td>'
+            + '<td style="white-space:nowrap"><span class="cite-badge ' + badgeCls + '">' + esc(x.status_waktu || '-') + '</span></td>'
+            + '<td style="white-space:nowrap"><a class="cite-link" href="' + esc(x.document_url || '#') + '" target="_blank" rel="noopener">Buka ↗</a></td>'
+            + '</tr>';
         });
+        c.innerHTML = '<table class="cite-table"><thead><tr>'
+          + '<th>#</th><th>Sumber</th><th>Pasal</th><th>Halaman</th><th>Skor</th><th>Status</th><th>PDF</th>'
+          + '</tr></thead><tbody>' + rows + '</tbody></table>';
         bubble.appendChild(c);
       }
     }
@@ -368,12 +394,17 @@ def pasang_chat(mcp) -> None:
         if not hasil:
             reply = "Tidak ditemukan dokumen relevan untuk pertanyaan ini."
         else:
-            lines = []
-            for h in hasil[:3]:
-                kut = (h.get("kutipan") or "").strip().replace("\n", " ")
-                lines.append(f"- {h.get('title','-')}: {kut[:180]}")
-            reply = ("Ditemukan " + str(len(hasil)) + " kutipan relevan. "
-                     "Ringkasan:\n" + "\n".join(lines))
+            reply = f"Ditemukan **{len(hasil)}** kutipan relevan.\n\n"
+            reply += "| # | Dokumen | Pasal/Bagian | Hal | Status |\n"
+            reply += "|---|---------|--------------|-----|--------|\n"
+            for i, h in enumerate(hasil[:5], 1):
+                title = (h.get("title") or "-").replace("|", " ")
+                pasal = (h.get("pasal") or h.get("bagian") or "-").replace("|", " ")
+                hal = str(h.get("halaman") or "-")
+                status_w = h.get("status_waktu") or "-"
+                reply += f"| {i} | {title} | {pasal} | {hal} | {status_w} |\n"
+            if len(hasil) > 5:
+                reply += f"\n_Lihat tabel sitasi di bawah untuk {len(hasil)-5} hasil lainnya._"
         return JSONResponse({
             "status": "ok",
             "reply": reply,

@@ -301,19 +301,49 @@ def _laman(pesan: str = "") -> HTMLResponse:
   });
   document.getElementById('btn-push').addEventListener('click', async function(){
     status.textContent = 'Pushing...';
+    hideEmpty();
     try {
       const r = await fetch('/chat/push', {method:'POST'});
       const d = await r.json();
       status.textContent = JSON.stringify(d, null, 2);
-    } catch(e){ status.textContent = 'Error: ' + e; }
+      if (d && d.status === 'ok') {
+        const raw = (d.output || '').toString().trim();
+        const lines = raw.split(/\r?\n/).filter(Boolean);
+        const tail = lines.slice(-6).join('\n');
+        let sum = '**Push ke GitHub (origin/main): berhasil.**';
+        if (tail) sum += '\n\n```\n' + tail + '\n```';
+        addMsg('agent', sum, []);
+      } else {
+        const err = (d && (d.stderr || d.error || d.output)) ? String(d.stderr || d.error || d.output).trim() : 'Gagal push.';
+        let sum = '**Push ke GitHub (origin/main): gagal.**';
+        if (err) sum += '\n\n```\n' + err.slice(0, 1200) + '\n```';
+        addMsg('agent', sum, []);
+      }
+    } catch(e){
+      status.textContent = 'Error: ' + e;
+      addMsg('agent', '**Push ke GitHub (origin/main): gagal.**\n\n```\n' + String(e) + '\n```', []);
+    }
   });
   document.getElementById('btn-deploy').addEventListener('click', async function(){
     status.textContent = 'Trigger deploy...';
+    hideEmpty();
     try {
       const r = await fetch('/chat/deploy', {method:'POST'});
       const d = await r.json();
       status.textContent = JSON.stringify(d, null, 2);
-    } catch(e){ status.textContent = 'Error: ' + e; }
+      if (d && d.status === 'ok') {
+        const http = (d.http !== undefined && d.http !== null) ? String(d.http) : 'OK';
+        addMsg('agent', '**Deploy (GitHub Actions `ci.yml`, ref `main`): dipicu.**\n\nRingkasan: request berhasil dikirim (HTTP ' + http + '). Cek tab Actions di repo untuk status run.', []);
+      } else {
+        const err = (d && (d.error || d.stderr || d.output)) ? String(d.error || d.stderr || d.output).trim() : 'Gagal trigger deploy.';
+        let sum = '**Deploy (GitHub Actions `ci.yml`, ref `main`): gagal.**';
+        if (err) sum += '\n\n```\n' + err.slice(0, 1200) + '\n```';
+        addMsg('agent', sum, []);
+      }
+    } catch(e){
+      status.textContent = 'Error: ' + e;
+      addMsg('agent', '**Deploy (GitHub Actions `ci.yml`, ref `main`): gagal.**\n\n```\n' + String(e) + '\n```', []);
+    }
   });
 
   // restore history (ringan) dari localStorage
